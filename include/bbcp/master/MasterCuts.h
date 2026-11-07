@@ -19,8 +19,6 @@ namespace bbcp
     class MasterCuts
     {
     public:
-        static double LocalBigM(double rhs);
-
         static int CountMissingCustomers(
             const std::vector<Node> &S,
             const std::vector<Node> &assigned_to_k);

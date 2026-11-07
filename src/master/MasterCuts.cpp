@@ -7,11 +7,6 @@
 namespace bbcp
 {
 
-    double MasterCuts::LocalBigM(double rhs)
-    {
-        return std::max(1.0, rhs);
-    }
-
     int MasterCuts::CountMissingCustomers(
         const std::vector<Node> &S,
         const std::vector<Node> &assigned_to_k)
@@ -43,8 +38,7 @@ namespace bbcp
         std::ostringstream oss;
 
         oss << "z_" << cut.drone_id
-            << " + M(" << cut.customers.size()
-            << " - sum_{i in S} a_i_" << cut.drone_id
+            << " + sum_{i in S} delta_i*(1-a_i_" << cut.drone_id
             << ") >= " << cut.rhs
             << "  source=" << cut.source
             << "  S={";

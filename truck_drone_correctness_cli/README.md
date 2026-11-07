@@ -68,3 +68,60 @@ The tests compile the two new complete `.cpp` files against explicitly named **m
 ## Scope
 
 This is a correctness-focused patch. It does **not** implement a K-drone MILP or change the physical operating assumptions. DP/DSSR and more aggressive Benders cut improvements should be implemented after the three supported baselines agree on small instances.
+
+## Lipschitz LBBD strengthening (this release)
+
+The installer now **always applies** the strengthened version: there is no
+`--lbbd-cut bigm` mode. It removes the obsolete uniform `MasterCuts::LocalBigM`
+helper and changes the cut construction in both modes:
+
+- Explicit: `zK[k] + sum_{i in S} min(r_i+tau, L(S))*(1-a[i][k]) >= L(S)`.
+- Slave-assign: `zD + sum_{i in S} min(r_i+tau, L(S))*(1-y[i]) >= L(S)`.
+- Fractional one-drone and K-drone subset-workload cuts similarly use
+  per-customer coefficients, rather than one uniform `M=rhs`.
+- Battery energy-cover cuts change from `q+R*missing>=R` to
+  `q+sum missing>=R` (same for aggregate `Q`), because deleting one
+  individually battery-feasible sortie can remove at most one required cycle.
+- Static two-customer drone-time cuts use pair-specific removal coefficients,
+  accounting for whether the pair requires a battery swap.
+
+**Only conditional drone LBBD/subset/workload inequalities are changed.**
+Other valid uses of big-M (MTZ, battery propagation in the MILP slave) cannot
+be replaced by this Lipschitz inequality; replacing them mechanically would
+break the formulation. This patch does not assert those big-M constructs are
+eliminated or fully verified.
+
+### How to apply
+
+Apply this ZIP **directly to a clean checkout of upstream `main`**; it includes
+all previous correctness/CLI changes as well as Lipschitz strengthening.
+Do not run the previous ZIP installer first, or the guarded anchors will fail.
+
+```bash
+# From the extracted package directory:
+python3 tools/apply_correctness_fixes.py /path/to/truck_drone_decomposition --check
+# Generate all 12 complete changed/new .cpp/.h files, without editing original:
+python3 tools/apply_correctness_fixes.py /path/to/truck_drone_decomposition --output-dir ./complete_updated_files
+# Or modify original checkout in place (writes *.backup for old files):
+python3 tools/apply_correctness_fixes.py /path/to/truck_drone_decomposition
+```
+
+The `--output-dir` creates **complete** `MasterCallback.cpp`,
+`MasterModelBuilder.cpp`, `MasterCuts.cpp`, etc., not `.patch` files. The archive
+contains the direct new helper `include/bbcp/master/LipschitzCuts.h` and two
+complete small `.cpp` replacements, with the rest produced deterministically
+from the clean upstream files.
+
+### Check mathematics and syntax without solvers
+
+```bash
+python3 tests/test_lipschitz_validity.py
+python3 tests/test_math_invariants.py
+bash tests/run_cli_mock_tests.sh
+g++ -std=c++17 -Wall -Wextra -Werror \
+    -Itests/lipschitz_mock -Iinclude \
+    tests/test_lipschitz_header.cpp -o /tmp/test_lipschitz_header
+/tmp/test_lipschitz_header
+```
+
+No actual Gurobi or OR-Tools run has been performed in this execution environment.

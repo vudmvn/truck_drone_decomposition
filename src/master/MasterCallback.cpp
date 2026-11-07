@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include "bbcp/master/MasterCuts.h"
+#include "bbcp/master/LipschitzCuts.h"
 
 namespace bbcp
 {
@@ -509,15 +510,14 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
             return;
         }
 
-        const double local_m = MasterCuts::LocalBigM(rhs);
-
-        GRBLinExpr missing = 0.0;
+        // phi(S) <= phi(S\{i}) + (r_i + tau). For every certified
+        // L(S)<=phi(S), the per-item reverse-Lipschitz coefficient is valid.
+        GRBLinExpr lhs = data_.zK[drone_id];
         for (Node i : S)
         {
-            missing += (1.0 - data_.a[i][drone_id]);
+            const double delta = LipschitzCuts::MakespanDrop(inst_, i, rhs);
+            lhs += delta * (1.0 - data_.a[i][drone_id]);
         }
-
-        GRBLinExpr lhs = data_.zK[drone_id] + local_m * missing;
         addLazy(lhs >= rhs);
 
         if (options_.cut_verbose)
@@ -525,7 +525,7 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
             std::cout << "[CUT] subset-LB drone=" << drone_id
                       << ", size=" << S.size()
                       << ", rhs=" << rhs
-                      << ", M=" << local_m << "\n";
+                      << ", coefficients=per-customer-lipschitz\n";
         }
     }
 
@@ -548,15 +548,14 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
             return;
         }
 
-        const double local_m = MasterCuts::LocalBigM(rhs);
-
-        GRBLinExpr missing = 0.0;
+        // Inserting a customer into an existing drone schedule requires
+        // at most its round-trip time and one additional battery swap.
+        GRBLinExpr lhs = data_.zD;
         for (Node i : S)
         {
-            missing += (1.0 - data_.y[i]);
+            const double delta = LipschitzCuts::MakespanDrop(inst_, i, rhs);
+            lhs += delta * (1.0 - data_.y[i]);
         }
-
-        GRBLinExpr lhs = data_.zD + local_m * missing;
         addLazy(lhs >= rhs);
 
         if (options_.cut_verbose || options_.verbose)
@@ -564,6 +563,7 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
             std::cout << "[CUT] global drone subset-LB"
                       << ", |S|=" << S.size()
                       << ", rhs=" << rhs
+                      << ", coefficients=per-customer-lipschitz"
                       << ", S=" << NodeListString(S)
                       << "\n";
         }
@@ -1446,17 +1446,15 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
             R > 0 && cuts_added < max_cuts)
         {
             const double lhs_rel =
-                Qrel + static_cast<double>(R) *
-                           (static_cast<double>(H.size()) - sum_y);
+                Qrel + static_cast<double>(H.size()) - sum_y;
             const double rhs = static_cast<double>(R);
 
             if (lhs_rel + tol < rhs)
             {
-                GRBLinExpr lhs = data_.Q +
-                                 static_cast<double>(R) * static_cast<double>(H.size());
+                GRBLinExpr lhs = data_.Q;
                 for (Node i : H)
                 {
-                    lhs -= static_cast<double>(R) * data_.y[i];
+                    lhs += 1.0 - data_.y[i];
                 }
 
                 addCut(lhs >= rhs);
@@ -1477,21 +1475,25 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
         }
 
         // Cut B: aggregate subset workload cut
-        //     K zD + M (|H| - sum_i y_i) >= sum_i r_i + tau R.
+        //     K zD + sum_i delta_i (1-y_i) >= sum_i r_i + tau R.
         if (options_.enable_slave_assign_workload_usercuts &&
             cuts_added < max_cuts)
         {
             const double rhs = sum_roundtrip + tau * static_cast<double>(R);
-            const double M = std::max(1.0, rhs);
-            const double lhs_rel =
-                K * zDrel + M * (static_cast<double>(H.size()) - sum_y);
+            double lhs_rel = K * zDrel;
+            for (Node i : H)
+            {
+                lhs_rel += LipschitzCuts::MakespanDrop(inst_, i, rhs) *
+                           (1.0 - yrel[i]);
+            }
 
             if (lhs_rel + tol < rhs)
             {
-                GRBLinExpr lhs = K * data_.zD + M * static_cast<double>(H.size());
+                GRBLinExpr lhs = K * data_.zD;
                 for (Node i : H)
                 {
-                    lhs -= M * data_.y[i];
+                    lhs += LipschitzCuts::MakespanDrop(inst_, i, rhs) *
+                           (1.0 - data_.y[i]);
                 }
 
                 addCut(lhs >= rhs);
@@ -1939,17 +1941,17 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
 
         // Conditional energy-cover cut:
         //
-        //   q_k + R(|H| - sum_{i in H} a_ik) >= R,
+        //   q_k + sum_{i in H}(1-a_ik) >= R,
         //
         // where R = ceil(sum e_i / E) - 1.
         //
         // This is valid for all integer assignments. If all H are assigned to
         // drone k, then q_k >= R. If at least one member is missing, the big-M term
-        // relaxes the cut.
+        // relaxes the cut by at most one battery cycle per missing task.
         if (required_swaps > 0 && cuts_added < max_cuts)
         {
             const double R = static_cast<double>(required_swaps);
-            const double lhs_value = qrel + R * (static_cast<double>(H.size()) - sum_a);
+            const double lhs_value = qrel + static_cast<double>(H.size()) - sum_a;
 
             if (lhs_value + 1e-6 < R)
             {
@@ -1957,7 +1959,7 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
 
                 for (Node i : H)
                 {
-                    lhs += R * (1.0 - data_.a[i][drone_id]);
+                    lhs += 1.0 - data_.a[i][drone_id];
                 }
 
                 addCut(lhs >= R);
@@ -1983,7 +1985,7 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
 
         // Conditional drone workload lower-bound cut:
         //
-        //   z_k + M(|H| - sum_{i in H} a_ik)
+        //   z_k + sum_{i in H} delta_i(1-a_ik)
         //       >= sum r_i + tau_swap * R.
         //
         // This strengthens fractional nodes for subsets that are almost fully
@@ -1994,9 +1996,12 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
 
         if (rhs > eps)
         {
-            const double M = std::max(1.0, rhs);
-            const double lhs_value =
-                zKrel + M * (static_cast<double>(H.size()) - sum_a);
+            double lhs_value = zKrel;
+            for (Node i : H)
+            {
+                lhs_value += LipschitzCuts::MakespanDrop(inst_, i, rhs) *
+                             (1.0 - arel[i][drone_id]);
+            }
 
             if (lhs_value + 1e-6 < rhs && cuts_added < max_cuts)
             {
@@ -2004,7 +2009,8 @@ bool ValidateDecodedSlaveSchedule(const Instance& inst,
 
                 for (Node i : H)
                 {
-                    lhs += M * (1.0 - data_.a[i][drone_id]);
+                    lhs += LipschitzCuts::MakespanDrop(inst_, i, rhs) *
+                           (1.0 - data_.a[i][drone_id]);
                 }
 
                 addCut(lhs >= rhs);

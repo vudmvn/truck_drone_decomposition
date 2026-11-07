@@ -11,6 +11,8 @@ import hashlib
 import shutil
 import sys
 
+import lipschitz_upgrade as lip
+
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
     count = source.count(old)
@@ -537,10 +539,12 @@ def main():
         'include/bbcp/slave/SingleDroneOrderingCPSatSlave.h':patch_cp_header,
         'src/slave/SingleDroneOrderingCPSatSlave.cpp':patch_cp_impl,
         'include/bbcp/slave/SlaveSolverFactory.h':patch_factory_header,
-        'src/master/MasterModelBuilder.cpp':patch_builder,
-        'src/master/MasterCallback.cpp':patch_callback,
+        'src/master/MasterModelBuilder.cpp':lambda s: lip.patch_builder(patch_builder(s)),
+        'src/master/MasterCallback.cpp':lambda s: lip.patch_callback(patch_callback(s)),
         'src/master/MasterProblem.cpp':patch_master_problem,
         'include/bbcp/core/Options.h':patch_options,
+        'include/bbcp/master/MasterCuts.h':lip.patch_master_cuts_header,
+        'src/master/MasterCuts.cpp':lip.patch_master_cuts_impl,
     }
     rewritten={}
     for rel,fn in transforms.items():
@@ -560,6 +564,13 @@ def main():
         if not (root/rel).is_file(): raise SystemExit(f'Missing original: {rel}')
         rewritten[rel]=path.read_text(encoding='utf-8')
         print('REPLACE',rel,'bytes=',len(rewritten[rel]))
+    # New header: created, not patched or overwritten. Compile included from the
+    # two modified C++ translation units.
+    new_header = 'include/bbcp/master/LipschitzCuts.h'
+    if (root/new_header).exists():
+        raise SystemExit(f'{new_header} already exists; do not apply twice')
+    rewritten[new_header]=(package/new_header).read_text(encoding='utf-8')
+    print('CREATE', new_header)
     if args.check:
         print('All replacement anchors verified. No files written.')
         return
@@ -576,12 +587,18 @@ def main():
         print('Exported',len(rewritten),'COMPLETE modified source files to',overlay)
         print('Original repository remains unchanged. Copy overlay src/ and include/ files into the repository when ready.')
         return
+    # All preconditions must pass before the first file is modified.
+    for rel in rewritten:
+        dest=root/rel
+        if Path(str(dest)+'.backup').exists():
+            raise SystemExit(f'Existing backup for {rel}; refusing partial update.')
     for rel,updated in rewritten.items():
         dest=root/rel
         backup=Path(str(dest)+'.backup')
-        if backup.exists():
-            raise SystemExit(f'Backup {backup} exists; refusing to overwrite.')
-        shutil.copy2(dest,backup)
+        if dest.exists():
+            shutil.copy2(dest,backup)
+        else:
+            dest.parent.mkdir(parents=True,exist_ok=True)
         dest.write_text(updated,encoding='utf-8')
     print('\nUPDATED',len(rewritten),'files. Backups: *.backup. No GitHub push performed.')
     print('Run: cmake -S . -B build -DBBCP_WITH_GUROBI=ON -DBBCP_WITH_ORTOOLS=ON')

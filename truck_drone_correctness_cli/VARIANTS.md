@@ -36,3 +36,13 @@ Output lines starting `[CONFIG]`, `[SLAVE]`, `[STATUS]` show selected architectu
 ## Limitations
 
 The release is a **source-level correction package**. The complete updated file content of the seven largest unchanged-plus-patched files is produced by `tools/apply_correctness_fixes.py --output-dir` when run against the upstream checkout. The package itself contains two complete new `.cpp` replacements and the deterministic source-to-source updater, not the entire cloned upstream repository. As there was no network access from the container or installed Gurobi/OR-Tools, no real solver execution or numerical exactness comparison is claimed.
+
+## Lipschitz LBBD cut status
+
+All three available assignment/solver variants use Lipschitz LBBD by default:
+- `explicit+cp` and `explicit+milp`: per-drone `zK[k]` cuts.
+- `slave-assign+cp`: global `zD` cuts.
+
+There is **no** `--lbbd-cut` selector: the old uniform Big-M subset cuts are
+removed. MTZ and one-drone MILP battery propagation still require their own
+logic-model Big-M/indicator construction; these are **not** LBBD cuts.

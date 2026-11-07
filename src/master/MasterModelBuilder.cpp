@@ -1,4 +1,5 @@
 #include "bbcp/master/MasterModelBuilder.h"
+#include "bbcp/master/LipschitzCuts.h"
 
 #include <algorithm>
 #include <cmath>
@@ -232,10 +233,19 @@ namespace bbcp
                         static_cast<double>(inst_.DroneRoundTripTime(j)) +
                         static_cast<double>(inst_.swap_time) * needs_swap;
 
-                    const double M = std::max(1.0, rhs);
+                    // A pair needs at most one swap. Removing one member
+                    // eliminates that member's flight time and, if needed,
+                    // the single swap between the pair.
+                    const double delta_i = std::min(rhs,
+                        static_cast<double>(inst_.DroneRoundTripTime(i)) +
+                        static_cast<double>(inst_.swap_time) * needs_swap);
+                    const double delta_j = std::min(rhs,
+                        static_cast<double>(inst_.DroneRoundTripTime(j)) +
+                        static_cast<double>(inst_.swap_time) * needs_swap);
 
                     model.addConstr(
-                        data.zK[k] + M * (2.0 - data.a[i][k] - data.a[j][k]) >= rhs,
+                        data.zK[k] + delta_i * (1.0 - data.a[i][k]) +
+                        delta_j * (1.0 - data.a[j][k]) >= rhs,
                         "pair_drone_time_lb_" + std::to_string(i) + "_" +
                             std::to_string(j) + "_" + std::to_string(k));
 

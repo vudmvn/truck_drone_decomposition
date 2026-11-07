@@ -29,5 +29,7 @@ milp_cp_solver
 *.swp
 *.swo
 *.backup
+__pycache__/
+*.pyc
 .vscode/
 .idea/
