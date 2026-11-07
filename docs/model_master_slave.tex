@@ -1,0 +1,3453 @@
+#include "MasterProblem.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <iostream>
+#include <limits>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <limits>
+#include "gurobi_c++.h"
+
+namespace bbcp
+{
+
+    MasterSubtourMode ParseMasterSubtourMode(const std::string &mode_raw)
+    {
+        std::string mode = mode_raw;
+        for (char &c : mode)
+        {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+
+        if (mode == "cut" || mode == "lazy" || mode == "lazycut" || mode == "branch-and-cut")
+        {
+            return MasterSubtourMode::LazyCut;
+        }
+
+        if (mode == "mtz")
+        {
+            return MasterSubtourMode::MTZ;
+        }
+
+        throw std::runtime_error(
+            "Unknown master mode: " + mode_raw + ". Use 'cut' or 'mtz'.");
+    }
+
+    std::string MasterSubtourModeName(MasterSubtourMode mode)
+    {
+        switch (mode)
+        {
+        case MasterSubtourMode::LazyCut:
+            return "cut";
+        case MasterSubtourMode::MTZ:
+            return "mtz";
+        }
+        return "unknown";
+    }
+
+    namespace
+    {
+
+        double SafeNormalize(double value, double min_value, double max_value)
+        {
+            const double denom = max_value - min_value;
+
+            if (denom <= 1e-9)
+            {
+                return 0.0;
+            }
+
+            double v = (value - min_value) / denom;
+
+            if (v < 0.0)
+                return 0.0;
+            if (v > 1.0)
+                return 1.0;
+
+            return v;
+        }
+        struct Subtour
+        {
+            std::vector<Node> nodes;
+        };
+
+        bool IsMasterTruckArcAllowed(const Instance &inst, int i, int j)
+        {
+            if (i == j)
+                return false;
+            if (i == inst.end_depot)
+                return false;
+            if (j == inst.start_depot)
+                return false;
+            return true;
+        }
+
+        struct MasterPreprocessStats
+        {
+            double initial_all_truck_ub = std::numeric_limits<double>::infinity();
+
+            int fixed_not_drone = 0;
+            int fixed_drone_by_energy = 0;
+            int fixed_drone_by_roundtrip_ub = 0;
+            int fixed_truck_arcs_by_ub = 0;
+        };
+
+        double GreedyAllTruckUpperBound(const Instance &inst)
+        {
+            const int n = inst.n;
+            const int start = inst.start_depot;
+            const int end = inst.end_depot;
+
+            std::vector<bool> used(n + 1, false);
+
+            int cur = start;
+            double total = 0.0;
+
+            for (int step = 0; step < n; ++step)
+            {
+                int best = -1;
+                int64_t best_time = INF64;
+
+                for (int i = 1; i <= n; ++i)
+                {
+                    if (used[i])
+                        continue;
+
+                    if (inst.truck_time[cur][i] < best_time)
+                    {
+                        best_time = inst.truck_time[cur][i];
+                        best = i;
+                    }
+                }
+
+                if (best == -1)
+                    break;
+
+                total += static_cast<double>(inst.truck_time[cur][best]);
+                used[best] = true;
+                cur = best;
+            }
+
+            total += static_cast<double>(inst.truck_time[cur][end]);
+
+            return total;
+        }
+
+        MasterPreprocessStats ApplyMasterPreprocessing(
+            const Instance &inst,
+            double initial_ub,
+            std::vector<GRBVar> &y,
+            std::vector<GRBVar> &t,
+            std::vector<std::vector<GRBVar>> &x,
+            GRBVar &z)
+        {
+            MasterPreprocessStats stats;
+            stats.initial_all_truck_ub = initial_ub;
+
+            const int N = inst.NumNodes();
+
+            // Since initial_ub is a feasible all-truck solution,
+            // no optimal solution needs z > initial_ub.
+            if (std::isfinite(initial_ub))
+            {
+                z.set(GRB_DoubleAttr_UB, initial_ub);
+            }
+
+            // ---------------------------------------------------------------
+            // 1. Fix assignment variables.
+            // ---------------------------------------------------------------
+            for (int i = 1; i <= inst.n; ++i)
+            {
+                bool force_truck = false;
+
+                // If customer i is not drone-feasible, it must be served by truck.
+                // This should include cases such as:
+                //   - demand_i > drone capacity,
+                //   - drone cannot fly round trip to i,
+                //   - other feasibility filters from DataReader.
+                if (!inst.drone_feasible[i])
+                {
+                    force_truck = true;
+                    stats.fixed_not_drone++;
+                }
+
+                // If the required energy is greater than battery capacity,
+                // customer i cannot be served by drone.
+                //
+                // This assumes inst.energy[i] is the full energy required for the
+                // modeled drone task, typically depot -> i -> depot.
+                if (inst.energy[i] > inst.battery_capacity)
+                {
+                    force_truck = true;
+                    stats.fixed_drone_by_energy++;
+                }
+
+                // If the single drone sortie already exceeds the incumbent UB,
+                // then assigning i to drone cannot appear in a solution with z <= UB.
+                if (std::isfinite(initial_ub))
+                {
+                    const double ri = static_cast<double>(inst.DroneRoundTripTime(i));
+
+                    if (ri > initial_ub + 1e-6)
+                    {
+                        force_truck = true;
+                        stats.fixed_drone_by_roundtrip_ub++;
+                    }
+                }
+
+                if (force_truck)
+                {
+                    // y_i = 0, t_i = 1
+                    y[i].set(GRB_DoubleAttr_LB, 0.0);
+                    y[i].set(GRB_DoubleAttr_UB, 0.0);
+
+                    t[i].set(GRB_DoubleAttr_LB, 1.0);
+                    t[i].set(GRB_DoubleAttr_UB, 1.0);
+                }
+            }
+
+            // ---------------------------------------------------------------
+            // 2. Fix truck arcs that are individually too long.
+            // ---------------------------------------------------------------
+            if (std::isfinite(initial_ub))
+            {
+                for (int i = 0; i < N; ++i)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (!IsMasterTruckArcAllowed(inst, i, j))
+                            continue;
+
+                        // If a single truck arc already exceeds UB, it cannot be
+                        // part of any solution with makespan <= UB.
+                        if (static_cast<double>(inst.truck_time[i][j]) > initial_ub + 1e-6)
+                        {
+                            x[i][j].set(GRB_DoubleAttr_UB, 0.0);
+                            stats.fixed_truck_arcs_by_ub++;
+                        }
+                    }
+                }
+            }
+
+            return stats;
+        }
+
+        std::vector<Node> DecodeTruckRouteFromX(
+            const Instance &inst,
+            const std::vector<std::vector<int>> &xsol)
+        {
+            const int N = inst.NumNodes();
+            const int start = inst.start_depot;
+            const int end = inst.end_depot;
+
+            std::vector<Node> route;
+            std::vector<bool> visited(N, false);
+
+            int cur = start;
+            route.push_back(cur);
+            visited[cur] = true;
+
+            while (cur != end)
+            {
+                int nxt = -1;
+
+                for (int j = 0; j < N; ++j)
+                {
+                    if (xsol[cur][j] == 1)
+                    {
+                        nxt = j;
+                        break;
+                    }
+                }
+
+                if (nxt == -1)
+                {
+                    std::cerr << "[WARN] Cannot decode truck route: no successor after node "
+                              << cur << "\n";
+                    break;
+                }
+
+                if (nxt != end && visited[nxt])
+                {
+                    std::cerr << "[WARN] Cycle detected while decoding truck route at node "
+                              << nxt << "\n";
+                    route.push_back(nxt);
+                    break;
+                }
+
+                route.push_back(nxt);
+                visited[nxt] = true;
+                cur = nxt;
+            }
+
+            return route;
+        }
+
+        void PrintRoute(const std::string &label, const std::vector<Node> &route)
+        {
+            std::cout << label;
+
+            if (route.empty())
+            {
+                std::cout << "(empty)\n";
+                return;
+            }
+
+            for (size_t k = 0; k < route.size(); ++k)
+            {
+                if (k > 0)
+                    std::cout << " -> ";
+                std::cout << route[k];
+            }
+
+            std::cout << "\n";
+        }
+
+        void PrintDroneChainsAsTours(const Instance &inst, const CPResult &cp_res)
+        {
+            std::cout << std::endl;
+            std::cout << "Drone schedules:" << std::endl;
+
+            for (size_t k = 0; k < cp_res.chains.size(); ++k)
+            {
+                const std::vector<Node> &chain = cp_res.chains[k];
+
+                std::cout << "  Drone " << k << ": ";
+
+                if (chain.empty())
+                {
+                    std::cout << "(not used)" << std::endl;
+                    continue;
+                }
+
+                const std::vector<int> *swaps = nullptr;
+                if (k < cp_res.swap_before.size())
+                {
+                    swaps = &cp_res.swap_before[k];
+                }
+
+                std::vector<Node> swap_nodes;
+
+                for (size_t p = 0; p < chain.size(); ++p)
+                {
+                    const bool has_swap =
+                        (swaps != nullptr && p < swaps->size() && (*swaps)[p] == 1);
+
+                    if (p > 0)
+                    {
+                        std::cout << " | ";
+                    }
+
+                    if (has_swap)
+                    {
+                        std::cout << "[SWAP] ";
+                        swap_nodes.push_back(chain[p]);
+                    }
+
+                    std::cout << inst.start_depot
+                              << " -> " << chain[p]
+                              << " -> " << inst.start_depot;
+                }
+
+                std::cout << std::endl;
+
+                std::cout << "           ";
+                if (!swap_nodes.empty())
+                {
+                    std::cout << "swaps before customer(s): ";
+                    for (size_t idx = 0; idx < swap_nodes.size(); ++idx)
+                    {
+                        if (idx > 0)
+                        {
+                            std::cout << ", ";
+                        }
+                        std::cout << swap_nodes[idx];
+                    }
+                }
+                else
+                {
+                    std::cout << "swaps: none";
+                }
+
+                std::cout << std::endl;
+            }
+
+            for (int k = static_cast<int>(cp_res.chains.size()); k < inst.n_drones; ++k)
+            {
+                std::cout << "  Drone " << k << ": (not used)" << std::endl;
+                std::cout << "           swaps: none" << std::endl;
+            }
+
+            std::cout << std::endl;
+        }
+
+        std::string CsvEscape(const std::string &s)
+        {
+            std::string out = "\"";
+
+            for (char c : s)
+            {
+                if (c == '"')
+                {
+                    out += "\"\"";
+                }
+                else
+                {
+                    out += c;
+                }
+            }
+
+            out += "\"";
+            return out;
+        }
+
+        std::string JoinRouteString(const std::vector<Node> &route)
+        {
+            std::ostringstream oss;
+
+            for (size_t i = 0; i < route.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    oss << " -> ";
+                }
+                oss << route[i];
+            }
+
+            return oss.str();
+        }
+
+        std::string JoinNodeListString(const std::vector<Node> &nodes)
+        {
+            std::ostringstream oss;
+
+            for (size_t i = 0; i < nodes.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    oss << " ";
+                }
+                oss << nodes[i];
+            }
+
+            return oss.str();
+        }
+
+        std::string DroneSchedulesString(const Instance &inst, const CPResult &cp_res)
+        {
+            std::ostringstream oss;
+
+            for (size_t k = 0; k < cp_res.chains.size(); ++k)
+            {
+                if (k > 0)
+                {
+                    oss << " || ";
+                }
+
+                oss << "Drone " << k << ": ";
+
+                const std::vector<Node> &chain = cp_res.chains[k];
+
+                if (chain.empty())
+                {
+                    oss << "(not used)";
+                    continue;
+                }
+
+                const std::vector<int> *swaps = nullptr;
+                if (k < cp_res.swap_before.size())
+                {
+                    swaps = &cp_res.swap_before[k];
+                }
+
+                for (size_t p = 0; p < chain.size(); ++p)
+                {
+                    const bool has_swap =
+                        (swaps != nullptr && p < swaps->size() && (*swaps)[p] == 1);
+
+                    if (p > 0)
+                    {
+                        oss << " | ";
+                    }
+
+                    if (has_swap)
+                    {
+                        oss << "[SWAP] ";
+                    }
+
+                    oss << inst.start_depot
+                        << " -> " << chain[p]
+                        << " -> " << inst.start_depot;
+                }
+            }
+
+            for (int k = static_cast<int>(cp_res.chains.size()); k < inst.n_drones; ++k)
+            {
+                if (!oss.str().empty())
+                {
+                    oss << " || ";
+                }
+                oss << "Drone " << k << ": (not used)";
+            }
+
+            return oss.str();
+        }
+
+        double ComputeTruckTimeFromX(
+            const Instance &inst,
+            const std::vector<std::vector<int>> &xsol)
+        {
+            double value = 0.0;
+            const int N = inst.NumNodes();
+
+            for (int i = 0; i < N; ++i)
+            {
+                for (int j = 0; j < N; ++j)
+                {
+                    if (xsol[i][j] == 1)
+                    {
+                        value += static_cast<double>(inst.truck_time[i][j]);
+                    }
+                }
+            }
+
+            return value;
+        }
+
+        bool CsvFileNeedsHeader(const std::string &filepath)
+        {
+            std::ifstream fin(filepath);
+
+            if (!fin.good())
+            {
+                return true; // file does not exist or cannot be opened for reading
+            }
+
+            return fin.peek() == std::ifstream::traits_type::eof(); // empty file
+        }
+
+        void WriteResultHeader(std::ofstream &fout)
+        {
+            fout << "instance,"
+                 << "n_customers,"
+                 << "n_drones,"
+                 << "swap_time_sec,"
+                 << "swap_time_min,"
+                 << "battery_capacity,"
+                 << "master_mode,"
+                 << "branching_strategy,"
+                 << "master_time_limit_sec,"
+                 << "cp_time_limit_sec,"
+                 << "mip_gap_param,"
+                 << "big_m,"
+                 << "status,"
+                 << "obj,"
+                 << "lower_bound,"
+                 << "mip_gap,"
+                 << "runtime_sec,"
+                 << "truck_time,"
+                 << "drone_makespan,"
+                 << "final_makespan,"
+                 << "num_truck_customers,"
+                 << "num_drone_customers,"
+                 << "truck_customers,"
+                 << "drone_customers,"
+                 << "truck_route,"
+                 << "drone_schedules\n";
+        }
+
+        void ExportFinalResultCSV(
+            const std::string &filepath,
+            const MasterOptions &options,
+            const Instance &inst,
+            int gurobi_status,
+            double obj,
+            double lower_bound,
+            double mip_gap,
+            double runtime_sec,
+            double truck_time,
+            double drone_makespan,
+            double final_makespan,
+            const std::vector<Node> &truck_customers,
+            const std::vector<Node> &drone_customers,
+            const std::vector<Node> &truck_route,
+            const CPResult &final_drone)
+        {
+            if (filepath.empty())
+            {
+                return;
+            }
+
+            const bool need_header = CsvFileNeedsHeader(filepath);
+
+            std::ofstream fout(filepath, std::ios::app);
+            if (!fout.is_open())
+            {
+                std::cerr << "[WARN] Cannot open result file: " << filepath << "\n";
+                return;
+            }
+
+            fout << std::fixed << std::setprecision(6);
+
+            if (need_header)
+            {
+                WriteResultHeader(fout);
+            }
+
+            fout << CsvEscape(options.instance_name) << ","
+                 << inst.n << ","
+                 << inst.n_drones << ","
+                 << inst.swap_time << ","
+                 << static_cast<double>(inst.swap_time) / 60.0 << ","
+                 << inst.battery_capacity << ","
+                 << CsvEscape(MasterSubtourModeName(options.subtour_mode)) << ","
+                 << CsvEscape(MasterBranchingStrategyName(options.branching_strategy)) << ","
+
+                 << options.time_limit_seconds << ","
+                 << options.cp_options.time_limit_seconds << ","
+                 << options.mip_gap << ","
+                 << options.big_m << ","
+                 << gurobi_status << ","
+                 << obj << ","
+                 << lower_bound << ","
+                 << mip_gap << ","
+                 << runtime_sec << ","
+                 << truck_time << ","
+                 << drone_makespan << ","
+                 << final_makespan << ","
+                 << truck_customers.size() << ","
+                 << drone_customers.size() << ","
+                 << CsvEscape(JoinNodeListString(truck_customers)) << ","
+                 << CsvEscape(JoinNodeListString(drone_customers)) << ","
+                 << CsvEscape(JoinRouteString(truck_route)) << ","
+                 << CsvEscape(DroneSchedulesString(inst, final_drone))
+                 << "\n";
+
+            fout.close();
+
+            std::cout << "Final result exported to: " << filepath << "\n";
+        }
+
+        void ExportNoSolutionCSV(
+            const std::string &filepath,
+            const MasterOptions &options,
+            const Instance &inst,
+            int gurobi_status,
+            double lower_bound,
+            double runtime_sec)
+        {
+            if (filepath.empty())
+            {
+                return;
+            }
+
+            const bool need_header = CsvFileNeedsHeader(filepath);
+
+            std::ofstream fout(filepath, std::ios::app);
+            if (!fout.is_open())
+            {
+                std::cerr << "[WARN] Cannot open result file: " << filepath << "\n";
+                return;
+            }
+
+            fout << std::fixed << std::setprecision(6);
+
+            if (need_header)
+            {
+                WriteResultHeader(fout);
+            }
+
+            fout << CsvEscape(options.instance_name) << ","
+                 << inst.n << ","
+                 << inst.n_drones << ","
+                 << inst.swap_time << ","
+                 << static_cast<double>(inst.swap_time) / 60.0 << ","
+                 << inst.battery_capacity << ","
+                 << CsvEscape(MasterSubtourModeName(options.subtour_mode)) << ","
+                 << options.time_limit_seconds << ","
+                 << options.cp_options.time_limit_seconds << ","
+                 << options.mip_gap << ","
+                 << options.big_m << ","
+                 << gurobi_status << ","
+                 << -1.0 << ","
+                 << lower_bound << ","
+                 << -1.0 << ","
+                 << runtime_sec << ","
+                 << -1.0 << ","
+                 << -1.0 << ","
+                 << -1.0 << ","
+                 << 0 << ","
+                 << 0 << ","
+                 << "\"\",\"\",\"\",\"\""
+                 << "\n";
+
+            fout.close();
+
+            std::cout << "No-solution result exported to: " << filepath << "\n";
+        }
+
+        class MasterCallback : public GRBCallback
+        {
+        public:
+            MasterCallback(const Instance &inst,
+                           const MasterOptions &options,
+                           const CPSubproblem &cp,
+                           const std::vector<GRBVar> &y,
+                           const std::vector<GRBVar> &t,
+                           const std::vector<std::vector<GRBVar>> &x,
+                           const GRBVar &z,
+                           const GRBVar &zT,
+                           const GRBVar &zD,
+                           double initial_valid_ub)
+                : inst_(inst),
+                  options_(options),
+                  cp_(cp),
+                  y_(y),
+                  t_(t),
+                  x_(x),
+                  z_(z),
+                  zT_(zT),
+                  zD_(zD),
+                  best_valid_ub_(initial_valid_ub) {}
+
+        protected:
+            void callback() override
+            {
+                try
+                {
+                    if (where == GRB_CB_MIPSOL)
+                    {
+                        HandleIntegerSolution();
+                        return;
+                    }
+
+                    if (where == GRB_CB_MIPNODE && options_.enable_mipnode_cuts)
+                    {
+                        HandleMIPNode();
+                        return;
+                    }
+
+                    if (where == GRB_CB_MIP)
+                    {
+                        HandleMIPProgress();
+                        return;
+                    }
+                }
+                catch (GRBException &e)
+                {
+                    std::cerr << "Gurobi callback error: "
+                              << e.getMessage() << "\n";
+                }
+                catch (std::exception &e)
+                {
+                    std::cerr << "Callback error: "
+                              << e.what() << "\n";
+                }
+            }
+
+        private:
+            const Instance &inst_;
+            MasterOptions options_;
+            const CPSubproblem &cp_;
+
+            const std::vector<GRBVar> &y_;
+            const std::vector<GRBVar> &t_;
+            const std::vector<std::vector<GRBVar>> &x_;
+            GRBVar z_;
+            GRBVar zT_;
+
+            GRBVar zD_;
+            // Best true feasible objective found by CP-checked master solutions.
+            // This is different from Gurobi's master incumbent because the master
+            // objective may underestimate the real CP drone schedule cost.
+            double best_valid_ub_ = std::numeric_limits<double>::infinity();
+
+            static constexpr double kOriginalGapTol = 0.01; // 1%
+
+            void CheckOriginalGapStopping(double master_lb)
+            {
+                if (!std::isfinite(best_valid_ub_))
+                {
+                    return;
+                }
+
+                if (!std::isfinite(master_lb))
+                {
+                    return;
+                }
+
+                const double denom = std::max(1.0, std::abs(best_valid_ub_));
+
+                const double original_gap =
+                    std::max(0.0, best_valid_ub_ - master_lb) / denom;
+
+                if (original_gap <= kOriginalGapTol)
+                {
+                    std::cout << "\n[STOP] Original-problem gap reached.\n";
+                    std::cout << "       Best valid UB = " << best_valid_ub_ << "\n";
+                    std::cout << "       Master LB     = " << master_lb << "\n";
+                    std::cout << "       Gap           = "
+                              << 100.0 * original_gap << "%\n";
+
+                    abort();
+                }
+            }
+
+            int CountSwapDecisions(const CPResult &res) const
+            {
+                int total = 0;
+                for (const auto &chain_swaps : res.swap_before)
+                {
+                    for (int v : chain_swaps)
+                    {
+                        if (v != 0)
+                        {
+                            total++;
+                        }
+                    }
+                }
+                return total;
+            }
+
+            void PrintNewBestSolution(
+                const std::string &source,
+                double old_ub,
+                double new_ub,
+                double master_z,
+                double truck_value,
+                double drone_value,
+                int swap_count,
+                int drone_set_size,
+                bool cp_optimal,
+                const std::string &note) const
+            {
+                if (!options_.verbose)
+                {
+                    return;
+                }
+
+                std::cout << "\n[NEW BEST] source=" << source
+                          << ", old_UB=" << old_ub
+                          << ", new_UB=" << new_ub
+                          << ", improvement=" << (old_ub - new_ub);
+
+                if (std::isfinite(old_ub) && old_ub > 1e-9)
+                {
+                    std::cout << " (" << 100.0 * (old_ub - new_ub) / old_ub << "%)";
+                }
+
+                std::cout << "\n"
+                          << "           accepted_z=" << new_ub
+                          << ", truck=" << truck_value
+                          << ", drone=" << drone_value
+                          << ", max(truck,drone)=" << std::max(truck_value, drone_value)
+                          << ", drone_set_size=" << drone_set_size
+                          << ", cp_optimal=" << (cp_optimal ? 1 : 0);
+
+                if (swap_count >= 0)
+                {
+                    std::cout << ", swaps=" << swap_count;
+                }
+
+                if (master_z >= 0.0)
+                {
+                    std::cout << ", master_z=" << master_z;
+                }
+
+                if (!note.empty())
+                {
+                    std::cout << "\n"
+                              << "           note=" << note;
+                }
+
+                std::cout << "\n";
+            }
+
+            void PrintRejectedMasterSolution(
+                const std::string &source,
+                const std::string &reason,
+                double master_z,
+                double truck_value,
+                double drone_value,
+                double accepted_z,
+                double current_ub,
+                int drone_set_size,
+                bool cp_optimal) const
+            {
+                if (!options_.verbose)
+                {
+                    return;
+                }
+
+                std::cout << "\n[REJECT] source=" << source
+                          << ", reason=" << reason
+                          << "\n"
+                          << "         master_z=" << master_z
+                          << ", truck=" << truck_value;
+
+                if (drone_value >= 0.0)
+                {
+                    std::cout << ", drone=" << drone_value;
+                }
+                else
+                {
+                    std::cout << ", drone=N/A";
+                }
+
+                if (accepted_z >= 0.0)
+                {
+                    std::cout << ", accepted_z=" << accepted_z;
+                }
+                else
+                {
+                    std::cout << ", accepted_z=N/A";
+                }
+
+                std::cout << ", current_UB=" << current_ub
+                          << ", drone_set_size=" << drone_set_size
+                          << ", cp_optimal=" << (cp_optimal ? 1 : 0)
+                          << "\n";
+            }
+
+            bool TryAcceptNewBestSolution(
+                const std::string &source,
+                const std::vector<int> &ybar,
+                const std::vector<int> &tbar,
+                const std::vector<std::vector<int>> &xbar,
+                double master_z,
+                double truck_value,
+                double drone_value,
+                double accepted_z,
+                int swap_count,
+                int drone_set_size,
+                bool cp_optimal,
+                const std::string &note)
+            {
+                const double old_ub = best_valid_ub_;
+
+                if (accepted_z + 1e-6 >= best_valid_ub_)
+                {
+                    PrintRejectedMasterSolution(
+                        source,
+                        "accepted_z >= current valid UB",
+                        master_z,
+                        truck_value,
+                        drone_value,
+                        accepted_z,
+                        best_valid_ub_,
+                        drone_set_size,
+                        cp_optimal);
+                    return false;
+                }
+
+                // This is the only place where the valid UB is updated.
+                // The accepted value is always max(truck_value, drone_value),
+                // hence every incumbent stored here is feasible for the original problem.
+                best_valid_ub_ = accepted_z;
+
+                SubmitRepairedIncumbent(
+                    ybar,
+                    tbar,
+                    xbar,
+                    truck_value,
+                    drone_value,
+                    accepted_z,
+                    swap_count);
+
+                PrintNewBestSolution(
+                    source,
+                    old_ub,
+                    accepted_z,
+                    master_z,
+                    truck_value,
+                    drone_value,
+                    swap_count,
+                    drone_set_size,
+                    cp_optimal,
+                    note);
+
+                try
+                {
+                    if (where == GRB_CB_MIPSOL)
+                    {
+                        const double master_lb = getDoubleInfo(GRB_CB_MIPSOL_OBJBND);
+                        CheckOriginalGapStopping(master_lb);
+                    }
+                }
+                catch (...)
+                {
+                    // Gurobi may not expose MIPSOL bound in some contexts.
+                    // This should not prevent accepting the incumbent.
+                }
+
+                return true;
+            }
+
+            void HandleMIPProgress()
+            {
+                const double master_lb = getDoubleInfo(GRB_CB_MIP_OBJBND);
+                CheckOriginalGapStopping(master_lb);
+            }
+
+            std::vector<Node> DecodeTruckRoute(
+                const std::vector<std::vector<int>> &xbar) const
+            {
+                const int N = inst_.NumNodes();
+                const int start = inst_.start_depot;
+                const int end = inst_.end_depot;
+
+                std::vector<int> succ(N, -1);
+
+                for (int i = 0; i < N; ++i)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (xbar[i][j] == 1)
+                        {
+                            succ[i] = j;
+                            break;
+                        }
+                    }
+                }
+
+                std::vector<Node> route;
+                std::vector<int> seen(N, 0);
+
+                int cur = start;
+                route.push_back(cur);
+                seen[cur] = 1;
+
+                while (cur != end && succ[cur] != -1)
+                {
+                    cur = succ[cur];
+
+                    if (cur < 0 || cur >= N)
+                        break;
+                    if (seen[cur])
+                        break;
+
+                    route.push_back(cur);
+                    seen[cur] = 1;
+                }
+
+                if (route.empty() || route.back() != end)
+                {
+                    return {};
+                }
+
+                return route;
+            }
+
+            double ComputeRouteTime(const std::vector<Node> &route) const
+            {
+                if (route.size() < 2)
+                    return GRB_INFINITY;
+
+                double value = 0.0;
+
+                for (int p = 0; p + 1 < static_cast<int>(route.size()); ++p)
+                {
+                    const Node i = route[p];
+                    const Node j = route[p + 1];
+
+                    value += static_cast<double>(inst_.truck_time[i][j]);
+                }
+
+                return value;
+            }
+
+            std::vector<Node> CheapestInsertIntoRoute(
+                const std::vector<Node> &route,
+                Node customer) const
+            {
+                if (route.size() < 2)
+                    return route;
+
+                double best_delta = GRB_INFINITY;
+                int best_pos = -1;
+
+                for (int pos = 0; pos + 1 < static_cast<int>(route.size()); ++pos)
+                {
+                    const Node a = route[pos];
+                    const Node b = route[pos + 1];
+
+                    const double delta =
+                        static_cast<double>(inst_.truck_time[a][customer]) +
+                        static_cast<double>(inst_.truck_time[customer][b]) -
+                        static_cast<double>(inst_.truck_time[a][b]);
+
+                    if (delta < best_delta)
+                    {
+                        best_delta = delta;
+                        best_pos = pos + 1;
+                    }
+                }
+
+                std::vector<Node> new_route = route;
+
+                if (best_pos >= 0)
+                {
+                    new_route.insert(new_route.begin() + best_pos, customer);
+                }
+
+                return new_route;
+            }
+
+            std::vector<Node> RemoveCustomerFromRoute(
+                const std::vector<Node> &route,
+                Node customer) const
+            {
+                std::vector<Node> new_route;
+                new_route.reserve(route.size());
+
+                for (Node v : route)
+                {
+                    if (v == customer)
+                        continue;
+                    new_route.push_back(v);
+                }
+
+                return new_route;
+            }
+
+            std::vector<std::vector<int>> BuildXFromRoute(
+                const std::vector<Node> &route) const
+            {
+                const int N = inst_.NumNodes();
+
+                std::vector<std::vector<int>> xbar(
+                    N,
+                    std::vector<int>(N, 0));
+
+                for (int p = 0; p + 1 < static_cast<int>(route.size()); ++p)
+                {
+                    const Node i = route[p];
+                    const Node j = route[p + 1];
+
+                    xbar[i][j] = 1;
+                }
+
+                return xbar;
+            }
+
+            struct DroneScheduleEval
+            {
+                bool feasible = false;
+                double makespan = GRB_INFINITY;
+                int swap_count = 0;
+            };
+
+            struct GreedyDroneInsertResult
+            {
+                bool feasible = false;
+                double drone_makespan = GRB_INFINITY;
+                int swap_count = 0;
+                std::vector<std::vector<Node>> chains;
+                std::vector<std::vector<int>> swap_before;
+            };
+
+            DroneScheduleEval EvaluateDroneScheduleGreedy(
+                const std::vector<std::vector<Node>> &chains,
+                const std::vector<std::vector<int>> &swap_before) const
+            {
+                DroneScheduleEval eval;
+                eval.feasible = true;
+                eval.makespan = 0.0;
+                eval.swap_count = 0;
+
+                for (size_t k = 0; k < chains.size(); ++k)
+                {
+                    const std::vector<Node> &chain = chains[k];
+
+                    if (chain.empty())
+                    {
+                        continue;
+                    }
+
+                    int64_t battery = inst_.battery_capacity;
+                    double chain_time = 0.0;
+
+                    for (size_t p = 0; p < chain.size(); ++p)
+                    {
+                        const Node c = chain[p];
+
+                        if (c < 1 || c > inst_.n || !inst_.drone_feasible[c])
+                        {
+                            eval.feasible = false;
+                            return eval;
+                        }
+
+                        int has_swap = 0;
+                        if (k < swap_before.size() && p < swap_before[k].size())
+                        {
+                            has_swap = swap_before[k][p];
+                        }
+
+                        // The first task of a drone chain starts with a full battery,
+                        // so it cannot need a swap immediately before it.
+                        if (p == 0)
+                        {
+                            has_swap = 0;
+                        }
+
+                        if (has_swap)
+                        {
+                            battery = inst_.battery_capacity;
+                            chain_time += static_cast<double>(inst_.swap_time);
+                            eval.swap_count++;
+                        }
+
+                        if (battery < inst_.energy[c])
+                        {
+                            eval.feasible = false;
+                            return eval;
+                        }
+
+                        chain_time += static_cast<double>(inst_.DroneRoundTripTime(c));
+                        battery -= inst_.energy[c];
+                    }
+
+                    eval.makespan = std::max(eval.makespan, chain_time);
+                }
+
+                return eval;
+            }
+
+            GreedyDroneInsertResult TryGreedyInsertTruckCustomerIntoDroneSchedule(
+                Node moved_customer,
+                const CPResult &current_drone,
+                double ub) const
+            {
+                GreedyDroneInsertResult best;
+
+                if (moved_customer < 1 || moved_customer > inst_.n)
+                {
+                    return best;
+                }
+
+                if (!inst_.drone_feasible[moved_customer])
+                {
+                    return best;
+                }
+
+                if (!std::isfinite(ub))
+                {
+                    return best;
+                }
+
+                if (static_cast<double>(inst_.DroneRoundTripTime(moved_customer)) >= ub - 1e-6)
+                {
+                    return best;
+                }
+
+                const int K = inst_.n_drones;
+
+                std::vector<std::vector<Node>> base_chains(K);
+                std::vector<std::vector<int>> base_swaps(K);
+
+                for (int k = 0; k < K; ++k)
+                {
+                    if (k < static_cast<int>(current_drone.chains.size()))
+                    {
+                        base_chains[k] = current_drone.chains[k];
+                    }
+
+                    if (k < static_cast<int>(current_drone.swap_before.size()))
+                    {
+                        base_swaps[k] = current_drone.swap_before[k];
+                    }
+
+                    if (base_swaps[k].size() < base_chains[k].size())
+                    {
+                        base_swaps[k].resize(base_chains[k].size(), 0);
+                    }
+
+                    if (!base_swaps[k].empty())
+                    {
+                        base_swaps[k][0] = 0;
+                    }
+                }
+
+                // Try all positions in all chains, and a small set of local
+                // battery-swap choices around the inserted customer.
+                for (int k = 0; k < K; ++k)
+                {
+                    const int len = static_cast<int>(base_chains[k].size());
+
+                    for (int pos = 0; pos <= len; ++pos)
+                    {
+                        for (int swap_new = 0; swap_new <= 1; ++swap_new)
+                        {
+                            // If the inserted customer becomes the head of the chain,
+                            // no swap is needed before it.
+                            if (pos == 0 && swap_new == 1)
+                            {
+                                continue;
+                            }
+
+                            for (int force_next_swap = 0; force_next_swap <= 1; ++force_next_swap)
+                            {
+                                std::vector<std::vector<Node>> chains = base_chains;
+                                std::vector<std::vector<int>> swaps = base_swaps;
+
+                                chains[k].insert(
+                                    chains[k].begin() + pos,
+                                    moved_customer);
+
+                                swaps[k].insert(
+                                    swaps[k].begin() + pos,
+                                    swap_new);
+
+                                // If there is a next customer, optionally force a swap
+                                // before that next customer to restore energy feasibility.
+                                if (force_next_swap && pos + 1 < static_cast<int>(swaps[k].size()))
+                                {
+                                    swaps[k][pos + 1] = 1;
+                                }
+
+                                if (!swaps[k].empty())
+                                {
+                                    swaps[k][0] = 0;
+                                }
+
+                                DroneScheduleEval eval =
+                                    EvaluateDroneScheduleGreedy(chains, swaps);
+
+                                if (!eval.feasible)
+                                {
+                                    continue;
+                                }
+
+                                if (eval.makespan + 1e-6 >= ub)
+                                {
+                                    continue;
+                                }
+
+                                if (!best.feasible ||
+                                    eval.makespan + 1e-6 < best.drone_makespan)
+                                {
+                                    best.feasible = true;
+                                    best.drone_makespan = eval.makespan;
+                                    best.swap_count = eval.swap_count;
+                                    best.chains = chains;
+                                    best.swap_before = swaps;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return best;
+            }
+
+            std::vector<Node> TwoOptImproveTruckRoute(
+                const std::vector<Node> &route) const
+            {
+                if (route.size() <= 4)
+                {
+                    return route;
+                }
+
+                std::vector<Node> best_route = route;
+                bool improved = true;
+
+                // Keep this bounded because this runs inside a Gurobi callback.
+                const int max_passes = 30;
+                int pass = 0;
+
+                while (improved && pass < max_passes)
+                {
+                    improved = false;
+                    pass++;
+
+                    for (int i = 1; i + 2 < static_cast<int>(best_route.size()); ++i)
+                    {
+                        for (int k = i + 1; k + 1 < static_cast<int>(best_route.size()); ++k)
+                        {
+                            const Node a = best_route[i - 1];
+                            const Node b = best_route[i];
+                            const Node c = best_route[k];
+                            const Node d = best_route[k + 1];
+
+                            const double old_cost =
+                                static_cast<double>(inst_.truck_time[a][b]) +
+                                static_cast<double>(inst_.truck_time[c][d]);
+
+                            const double new_cost =
+                                static_cast<double>(inst_.truck_time[a][c]) +
+                                static_cast<double>(inst_.truck_time[b][d]);
+
+                            if (new_cost + 1e-9 < old_cost)
+                            {
+                                std::reverse(
+                                    best_route.begin() + i,
+                                    best_route.begin() + k + 1);
+
+                                improved = true;
+                                break;
+                            }
+                        }
+
+                        if (improved)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                return best_route;
+            }
+
+            void RunSimpleIncumbentLocalSearch(
+                const std::vector<std::vector<int>> &xbar,
+                const std::vector<Node> &drone_customers,
+                const CPResult &current_drone)
+            {
+                if (!options_.enable_incumbent_local_search)
+                {
+                    return;
+                }
+
+                if (!std::isfinite(best_valid_ub_))
+                {
+                    return;
+                }
+
+                std::vector<Node> base_route = DecodeTruckRoute(xbar);
+
+                if (base_route.empty())
+                {
+                    return;
+                }
+
+                int tried_moves = 0;
+
+                // ------------------------------------------------------------
+                // New LS design:
+                //   Only move one truck customer to drone.
+                //   Do NOT call CP in local search.
+                //   Instead, greedily insert the customer into the current
+                //   decoded drone schedule. If the resulting drone makespan is
+                //   below the current UB, remove the customer from the truck
+                //   route, run 2-opt on the reduced route, and accept only if
+                //   max(truck_after_2opt, drone_after_greedy) improves UB.
+                // ------------------------------------------------------------
+                for (int pos = 1; pos + 1 < static_cast<int>(base_route.size()); ++pos)
+                {
+                    if (tried_moves >= options_.local_search_max_cp_calls)
+                    {
+                        return;
+                    }
+
+                    const Node moved_customer = base_route[pos];
+
+                    if (moved_customer < 1 || moved_customer > inst_.n)
+                    {
+                        continue;
+                    }
+
+                    if (!inst_.drone_feasible[moved_customer])
+                    {
+                        continue;
+                    }
+
+                    tried_moves++;
+
+                    GreedyDroneInsertResult greedy_drone =
+                        TryGreedyInsertTruckCustomerIntoDroneSchedule(
+                            moved_customer,
+                            current_drone,
+                            best_valid_ub_);
+
+                    if (!greedy_drone.feasible)
+                    {
+                        PrintRejectedMasterSolution(
+                            "LS-T2D-GREEDY",
+                            "cannot greedily insert truck customer into drone schedule under current UB",
+                            -1.0,
+                            -1.0,
+                            -1.0,
+                            -1.0,
+                            best_valid_ub_,
+                            static_cast<int>(drone_customers.size()) + 1,
+                            false);
+                        continue;
+                    }
+
+                    const double drone_value = greedy_drone.drone_makespan;
+
+                    std::vector<Node> new_route =
+                        RemoveCustomerFromRoute(base_route, moved_customer);
+
+                    new_route = TwoOptImproveTruckRoute(new_route);
+
+                    const double truck_value = ComputeRouteTime(new_route);
+
+                    if (!std::isfinite(truck_value))
+                    {
+                        continue;
+                    }
+
+                    const double accepted_z = std::max(truck_value, drone_value);
+
+                    if (accepted_z + 1e-6 >= best_valid_ub_)
+                    {
+                        PrintRejectedMasterSolution(
+                            "LS-T2D-GREEDY",
+                            "after greedy drone insertion and truck 2-opt, solution is not better than current UB",
+                            -1.0,
+                            truck_value,
+                            drone_value,
+                            accepted_z,
+                            best_valid_ub_,
+                            static_cast<int>(drone_customers.size()) + 1,
+                            false);
+                        continue;
+                    }
+
+                    std::vector<Node> new_drone_customers = drone_customers;
+                    new_drone_customers.push_back(moved_customer);
+                    std::sort(new_drone_customers.begin(), new_drone_customers.end());
+                    new_drone_customers.erase(
+                        std::unique(new_drone_customers.begin(), new_drone_customers.end()),
+                        new_drone_customers.end());
+
+                    const int N = inst_.NumNodes();
+
+                    std::vector<int> ynew(N, 0);
+                    std::vector<int> tnew(N, 1);
+
+                    for (Node i : new_drone_customers)
+                    {
+                        ynew[i] = 1;
+                        tnew[i] = 0;
+                    }
+
+                    ynew[inst_.start_depot] = 0;
+                    tnew[inst_.start_depot] = 0;
+                    ynew[inst_.end_depot] = 0;
+                    tnew[inst_.end_depot] = 0;
+
+                    std::vector<std::vector<int>> xnew =
+                        BuildXFromRoute(new_route);
+
+                    TryAcceptNewBestSolution(
+                        "LS-T2D-GREEDY",
+                        ynew,
+                        tnew,
+                        xnew,
+                        -1.0,
+                        truck_value,
+                        drone_value,
+                        accepted_z,
+                        greedy_drone.swap_count,
+                        static_cast<int>(new_drone_customers.size()),
+                        false,
+                        "truck->drone move, greedy drone insertion under UB, then 2-opt truck");
+                }
+            }
+
+            void SubmitRepairedIncumbent(
+                const std::vector<int> &ybar,
+                const std::vector<int> &tbar,
+                const std::vector<std::vector<int>> &xbar,
+                double truck_value,
+                double drone_value,
+                double phi,
+                int swap_count = -1)
+            {
+                std::vector<GRBVar> vars;
+                std::vector<double> vals;
+
+                const int N = inst_.NumNodes();
+
+                // Assignment variables.
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    vars.push_back(y_[i]);
+                    vals.push_back(static_cast<double>(ybar[i]));
+
+                    vars.push_back(t_[i]);
+                    vals.push_back(static_cast<double>(tbar[i]));
+                }
+
+                // Truck arc variables.
+                for (int i = 0; i < N; ++i)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (!IsTruckArcAllowed(i, j))
+                            continue;
+
+                        vars.push_back(x_[i][j]);
+                        vals.push_back(static_cast<double>(xbar[i][j]));
+                    }
+                }
+
+                // Continuous objective-related variables.
+                vars.push_back(zT_);
+                vals.push_back(truck_value);
+
+                vars.push_back(zD_);
+                vals.push_back(drone_value);
+
+                vars.push_back(z_);
+                vals.push_back(phi);
+
+                setSolution(vars.data(), vals.data(), static_cast<int>(vars.size()));
+
+                if (options_.verbose)
+                {
+                    std::cout << "[SUBMIT] repaired solution candidate, z="
+                              << phi
+                              << ", truck=" << truck_value
+                              << ", drone=" << drone_value;
+
+                    if (swap_count >= 0)
+                    {
+                        std::cout << ", swaps=" << swap_count;
+                    }
+
+                    std::cout << "\n";
+                }
+            }
+
+            void SeparateFractionalTruckCuts(
+                const std::vector<std::vector<double>> &xrel,
+                const std::vector<double> &trel)
+            {
+                const int N = inst_.NumNodes();
+                const int start = inst_.start_depot;
+                const int end = inst_.end_depot;
+
+                const double eps = options_.mipnode_cut_eps;
+                int cuts_added = 0;
+
+                // Build an undirected support graph from positive fractional truck arcs.
+                std::vector<std::vector<int>> adj(N);
+
+                for (int i = 0; i < N; ++i)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (!IsTruckArcAllowed(i, j))
+                            continue;
+
+                        if (xrel[i][j] > eps)
+                        {
+                            adj[i].push_back(j);
+                            adj[j].push_back(i);
+                        }
+                    }
+                }
+
+                std::vector<int> visited(N, 0);
+
+                for (int root = 0; root < N; ++root)
+                {
+                    if (visited[root])
+                        continue;
+
+                    std::vector<int> comp;
+                    std::vector<int> stack = {root};
+                    visited[root] = 1;
+
+                    bool contains_start = false;
+                    bool contains_end = false;
+
+                    while (!stack.empty())
+                    {
+                        int v = stack.back();
+                        stack.pop_back();
+
+                        comp.push_back(v);
+
+                        if (v == start)
+                            contains_start = true;
+                        if (v == end)
+                            contains_end = true;
+
+                        for (int nxt : adj[v])
+                        {
+                            if (visited[nxt])
+                                continue;
+                            visited[nxt] = 1;
+                            stack.push_back(nxt);
+                        }
+                    }
+
+                    // We only cut disconnected customer components.
+                    // Components containing depot/start/end are not handled here.
+                    if (contains_start || contains_end)
+                    {
+                        continue;
+                    }
+
+                    std::vector<Node> S;
+                    for (int v : comp)
+                    {
+                        if (v >= 1 && v <= inst_.n && trel[v] > eps)
+                        {
+                            S.push_back(v);
+                        }
+                    }
+
+                    if (S.empty())
+                    {
+                        continue;
+                    }
+
+                    // 1. Fractional subtour cut:
+                    //
+                    //     sum_{i,j in S, i != j} x_ij <= |S| - 1.
+                    //
+                    if (S.size() >= 2 && cuts_added < options_.max_mipnode_cuts_per_call)
+                    {
+                        if (TryAddFractionalSubtourUserCut(S, xrel))
+                        {
+                            cuts_added++;
+                        }
+                    }
+
+                    if (cuts_added >= options_.max_mipnode_cuts_per_call)
+                    {
+                        return;
+                    }
+
+                    // 2. Directed connectivity cuts:
+                    //
+                    //     sum_{i in S, j notin S} x_ij >= t_k
+                    //     sum_{i notin S, j in S} x_ij >= t_k
+                    //
+                    // where k is the most selected customer in S.
+                    if (cuts_added < options_.max_mipnode_cuts_per_call)
+                    {
+                        if (TryAddFractionalConnectivityUserCuts(S, xrel, trel))
+                        {
+                            cuts_added++;
+                        }
+                    }
+
+                    if (cuts_added >= options_.max_mipnode_cuts_per_call)
+                    {
+                        return;
+                    }
+                }
+            }
+
+            bool TryAddFractionalSubtourUserCut(
+                const std::vector<Node> &S,
+                const std::vector<std::vector<double>> &xrel)
+            {
+                if (S.size() < 2)
+                {
+                    return false;
+                }
+
+                double lhs_value = 0.0;
+
+                for (Node i : S)
+                {
+                    for (Node j : S)
+                    {
+                        if (i == j)
+                            continue;
+                        lhs_value += xrel[i][j];
+                    }
+                }
+
+                const double rhs_value = static_cast<double>(S.size()) - 1.0;
+
+                if (lhs_value <= rhs_value + options_.mipnode_cut_eps)
+                {
+                    return false;
+                }
+
+                GRBLinExpr lhs = 0.0;
+
+                for (Node i : S)
+                {
+                    for (Node j : S)
+                    {
+                        if (i == j)
+                            continue;
+                        lhs += x_[i][j];
+                    }
+                }
+
+                addCut(lhs <= static_cast<int>(S.size()) - 1);
+
+                if (options_.cut_verbose)
+                {
+                    std::cout << "[USERCUT] fractional subtour size="
+                              << S.size()
+                              << ", lhs=" << lhs_value
+                              << ", rhs=" << rhs_value
+                              << "\n";
+                }
+
+                return true;
+            }
+
+            bool TryAddFractionalConnectivityUserCuts(
+                const std::vector<Node> &S,
+                const std::vector<std::vector<double>> &xrel,
+                const std::vector<double> &trel)
+            {
+                if (S.empty())
+                {
+                    return false;
+                }
+
+                const int N = inst_.NumNodes();
+                const double eps = options_.mipnode_cut_eps;
+
+                std::vector<int> inS(N, 0);
+                for (Node i : S)
+                {
+                    inS[i] = 1;
+                }
+
+                // Pick the most selected customer in S.
+                Node k = S.front();
+                for (Node i : S)
+                {
+                    if (trel[i] > trel[k])
+                    {
+                        k = i;
+                    }
+                }
+
+                if (trel[k] <= eps)
+                {
+                    return false;
+                }
+
+                double out_value = 0.0;
+                double in_value = 0.0;
+
+                for (Node i : S)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (inS[j])
+                            continue;
+                        if (!IsTruckArcAllowed(i, j))
+                            continue;
+                        out_value += xrel[i][j];
+                    }
+                }
+
+                for (int i = 0; i < N; ++i)
+                {
+                    if (inS[i])
+                        continue;
+
+                    for (Node j : S)
+                    {
+                        if (!IsTruckArcAllowed(i, j))
+                            continue;
+                        in_value += xrel[i][j];
+                    }
+                }
+
+                bool added = false;
+
+                // Outgoing connectivity:
+                //
+                //     sum_{i in S, j notin S} x_ij >= t_k.
+                //
+                if (out_value + eps < trel[k])
+                {
+                    GRBLinExpr out_expr = 0.0;
+
+                    for (Node i : S)
+                    {
+                        for (int j = 0; j < N; ++j)
+                        {
+                            if (inS[j])
+                                continue;
+                            if (!IsTruckArcAllowed(i, j))
+                                continue;
+                            out_expr += x_[i][j];
+                        }
+                    }
+
+                    addCut(out_expr >= t_[k]);
+                    added = true;
+
+                    if (options_.cut_verbose)
+                    {
+                        std::cout << "[USERCUT] outgoing connectivity size="
+                                  << S.size()
+                                  << ", lhs=" << out_value
+                                  << ", rhs=t_" << k
+                                  << "=" << trel[k]
+                                  << "\n";
+                    }
+                }
+
+                // Incoming connectivity:
+                //
+                //     sum_{i notin S, j in S} x_ij >= t_k.
+                //
+                if (in_value + eps < trel[k])
+                {
+                    GRBLinExpr in_expr = 0.0;
+
+                    for (int i = 0; i < N; ++i)
+                    {
+                        if (inS[i])
+                            continue;
+
+                        for (Node j : S)
+                        {
+                            if (!IsTruckArcAllowed(i, j))
+                                continue;
+                            in_expr += x_[i][j];
+                        }
+                    }
+
+                    addCut(in_expr >= t_[k]);
+                    added = true;
+
+                    if (options_.cut_verbose)
+                    {
+                        std::cout << "[USERCUT] incoming connectivity size="
+                                  << S.size()
+                                  << ", lhs=" << in_value
+                                  << ", rhs=t_" << k
+                                  << "=" << trel[k]
+                                  << "\n";
+                    }
+                }
+
+                return added;
+            }
+
+            void HandleMIPNode()
+            {
+                // Only separate cuts when the node relaxation is solved to optimality.
+                const int node_status = getIntInfo(GRB_CB_MIPNODE_STATUS);
+
+                if (node_status != GRB_OPTIMAL)
+                {
+                    return;
+                }
+
+                const int N = inst_.NumNodes();
+
+                std::vector<double> trel(N, 0.0);
+                std::vector<std::vector<double>> xrel(N, std::vector<double>(N, 0.0));
+
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    trel[i] = getNodeRel(t_[i]);
+                }
+
+                for (int i = 0; i < N; ++i)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (!IsTruckArcAllowed(i, j))
+                            continue;
+                        xrel[i][j] = getNodeRel(x_[i][j]);
+                    }
+                }
+
+                SeparateFractionalTruckCuts(xrel, trel);
+            }
+
+            void AddDroneSubsetLowerBoundCut(
+                const std::vector<Node> &drone_customers,
+                double lb)
+            {
+                if (drone_customers.empty())
+                    return;
+                if (lb <= 0.0)
+                    return;
+
+                // Dynamic Big-M:
+                //
+                // zD + M * (|S| - sum_{i in S} y_i) >= lb
+                //
+                // If all customers in S are selected, missing = 0,
+                // so the cut becomes zD >= lb.
+                //
+                // If at least one customer in S is not selected, missing >= 1.
+                // Since zD >= 0, choosing M >= lb makes the cut automatically satisfied.
+                const double local_m = std::max(1.0, lb);
+
+                GRBLinExpr missing = 0.0;
+
+                for (Node i : drone_customers)
+                {
+                    missing += (1.0 - y_[i]);
+                }
+
+                GRBLinExpr lhs = 0.0;
+                lhs += zD_;
+                lhs += local_m * missing;
+
+                addLazy(lhs >= lb);
+
+                if (options_.cut_verbose)
+                {
+                    std::cout << "[CUT] CP subset LB, size="
+                              << drone_customers.size()
+                              << ", lb=" << lb << "\n";
+                }
+            }
+            bool IsTruckArcAllowed(int i, int j) const
+            {
+                return IsMasterTruckArcAllowed(inst_, i, j);
+            }
+
+            void HandleIntegerSolution()
+            {
+                const int N = inst_.NumNodes();
+
+                std::vector<int> ybar(N, 0);
+                std::vector<int> tbar(N, 0);
+                std::vector<std::vector<int>> xbar(N, std::vector<int>(N, 0));
+
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    ybar[i] = (getSolution(y_[i]) > 0.5 ? 1 : 0);
+                    tbar[i] = (getSolution(t_[i]) > 0.5 ? 1 : 0);
+                }
+
+                for (int i = 0; i < N; ++i)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (!IsTruckArcAllowed(i, j))
+                            continue;
+                        xbar[i][j] = (getSolution(x_[i][j]) > 0.5 ? 1 : 0);
+                    }
+                }
+
+                if (options_.subtour_mode == MasterSubtourMode::LazyCut)
+                {
+                    std::vector<Subtour> subtours = FindTruckSubtours(xbar, tbar);
+                    if (!subtours.empty())
+                    {
+                        for (const Subtour &st : subtours)
+                        {
+                            AddSubtourCut(st);
+                        }
+                        return;
+                    }
+                }
+
+                std::vector<Node> drone_customers;
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    if (ybar[i] == 1)
+                    {
+                        drone_customers.push_back(i);
+                    }
+                }
+
+                const double truck_value = ComputeTruckValue(xbar);
+                const double master_z = getSolution(z_);
+
+                if (options_.verbose)
+                {
+                    std::cout << "\n[MIPSOL] candidate master_z=" << master_z
+                              << ", truck=" << truck_value
+                              << ", drone_set_size=" << drone_customers.size()
+                              << ", current_valid_UB=" << best_valid_ub_
+                              << "\n";
+                }
+
+                if (std::isfinite(best_valid_ub_) &&
+                    truck_value >= best_valid_ub_ - 1e-6)
+                {
+                    PrintRejectedMasterSolution(
+                        "MIPSOL-P0",
+                        "truck_value >= current valid UB, so max(truck,drone) cannot improve UB",
+                        master_z,
+                        truck_value,
+                        -1.0,
+                        -1.0,
+                        best_valid_ub_,
+                        static_cast<int>(drone_customers.size()),
+                        false);
+                    return;
+                }
+
+                if (std::isfinite(best_valid_ub_) &&
+                    master_z >= best_valid_ub_ - 1e-6)
+                {
+                    PrintRejectedMasterSolution(
+                        "MIPSOL-P0",
+                        "master_z >= current valid UB, so this master candidate cannot improve UB",
+                        master_z,
+                        truck_value,
+                        -1.0,
+                        -1.0,
+                        best_valid_ub_,
+                        static_cast<int>(drone_customers.size()),
+                        false);
+                    return;
+                }
+
+                // ------------------------------------------------------------
+                // Phase 1: quick CP feasibility check under z_slave <= z_master.
+                // If CP finds any feasible drone schedule satisfying this cutoff,
+                // then the master candidate is valid for the original problem.
+                // We do not need CP optimality in this phase.
+                // ------------------------------------------------------------
+                CPOptions cp1_options = options_.cp_options;
+                cp1_options.makespan_cutoff =
+                    static_cast<int64_t>(std::floor(master_z + 1e-9));
+                cp1_options.stop_after_first_solution = true;
+
+                CPResult r1 = cp_.SolveDroneSubproblem(
+                    drone_customers,
+                    cp1_options);
+
+                if (r1.feasible)
+                {
+                    const double z_slave = static_cast<double>(r1.objective);
+                    const double accepted_z = std::max(truck_value, z_slave);
+
+                    // With the cutoff z_slave <= z_master, this should hold.
+                    // Keep the explicit check to avoid accepting an inconsistent
+                    // CP return caused by tolerance/configuration issues.
+                    if (z_slave <= master_z + 1e-6)
+                    {
+                        bool improved_by_phase1 = false;
+
+                        if (accepted_z + 1e-6 < best_valid_ub_)
+                        {
+                            improved_by_phase1 = TryAcceptNewBestSolution(
+                                "MIPSOL-P1",
+                                ybar,
+                                tbar,
+                                xbar,
+                                master_z,
+                                truck_value,
+                                z_slave,
+                                accepted_z,
+                                CountSwapDecisions(r1),
+                                static_cast<int>(drone_customers.size()),
+                                r1.optimal,
+                                "CP found a feasible slave schedule with z_slave <= z_master");
+                        }
+                        else
+                        {
+                            PrintRejectedMasterSolution(
+                                "MIPSOL-P1",
+                                "feasible slave schedule satisfies z_slave <= z_master but accepted_z is not better than current UB",
+                                master_z,
+                                truck_value,
+                                z_slave,
+                                accepted_z,
+                                best_valid_ub_,
+                                static_cast<int>(drone_customers.size()),
+                                r1.optimal);
+                        }
+
+                        if (r1.lower_bound_valid)
+                        {
+                            const double zD_value = getSolution(zD_);
+                            if (zD_value + 1e-6 < static_cast<double>(r1.lower_bound))
+                            {
+                                AddDroneSubsetLowerBoundCut(
+                                    drone_customers,
+                                    static_cast<double>(r1.lower_bound));
+                            }
+                        }
+
+                        if (improved_by_phase1)
+                        {
+                            RunSimpleIncumbentLocalSearch(
+                                xbar,
+                                drone_customers,
+                                r1);
+                        }
+
+                        return;
+                    }
+
+                    PrintRejectedMasterSolution(
+                        "MIPSOL-P1",
+                        "CP returned a feasible slave schedule but z_slave > z_master; continue to optimal phase",
+                        master_z,
+                        truck_value,
+                        z_slave,
+                        accepted_z,
+                        best_valid_ub_,
+                        static_cast<int>(drone_customers.size()),
+                        r1.optimal);
+                }
+
+                if (!r1.feasible && r1.proven_infeasible)
+                {
+                    // CP proved that this drone set cannot fit within z_master.
+                    // Times are integer seconds, so D*(S) >= floor(z_master) + 1.
+                    AddDroneSubsetLowerBoundCut(
+                        drone_customers,
+                        std::floor(master_z + 1e-9) + 1.0);
+                }
+                else if (!r1.feasible && r1.lower_bound_valid)
+                {
+                    const double zD_value = getSolution(zD_);
+                    if (zD_value + 1e-6 < static_cast<double>(r1.lower_bound))
+                    {
+                        AddDroneSubsetLowerBoundCut(
+                            drone_customers,
+                            static_cast<double>(r1.lower_bound));
+                    }
+                }
+
+                // ------------------------------------------------------------
+                // Phase 2: solve the CP slave problem under z_slave <= UB - 1.
+                // This is the only region that can improve the current valid UB.
+                //
+                // If CP proves optimality, we obtain D*(S). Then:
+                //   - if D*(S) <= z_master, accept the master candidate;
+                //   - if D*(S) >  z_master, reject it and add zD >= D*(S)
+                //     for the current drone set S.
+                //
+                // If CP only returns a non-optimal feasible solution, we may use
+                // it for acceptance only when its value is already <= z_master.
+                // We must not add the strong zD >= z_slave cut unless optimality
+                // is proven.
+                // ------------------------------------------------------------
+                if (!std::isfinite(best_valid_ub_))
+                {
+                    PrintRejectedMasterSolution(
+                        "MIPSOL-P2",
+                        "no finite valid UB is available for phase-2 cutoff",
+                        master_z,
+                        truck_value,
+                        -1.0,
+                        -1.0,
+                        best_valid_ub_,
+                        static_cast<int>(drone_customers.size()),
+                        false);
+                    return;
+                }
+
+                const int64_t ub_cutoff =
+                    static_cast<int64_t>(std::floor(best_valid_ub_ - 1.0 + 1e-9));
+
+                if (ub_cutoff < 0)
+                {
+                    PrintRejectedMasterSolution(
+                        "MIPSOL-P2",
+                        "UB-1 cutoff is negative, skip CP phase 2",
+                        master_z,
+                        truck_value,
+                        -1.0,
+                        -1.0,
+                        best_valid_ub_,
+                        static_cast<int>(drone_customers.size()),
+                        false);
+                    return;
+                }
+
+                CPOptions cp2_options = options_.cp_options;
+                cp2_options.makespan_cutoff = ub_cutoff;
+                cp2_options.stop_after_first_solution = false;
+
+                CPResult r2 = cp_.SolveDroneSubproblem(
+                    drone_customers,
+                    cp2_options);
+
+                if (r2.feasible)
+                {
+                    const double z_slave = static_cast<double>(r2.objective);
+                    const double accepted_z = std::max(truck_value, z_slave);
+
+                    if (options_.verbose)
+                    {
+                        std::cout << "[MIPSOL-P2] z_slave=" << z_slave
+                                  << ", master_z=" << master_z
+                                  << ", accepted_z=" << accepted_z
+                                  << ", truck=" << truck_value
+                                  << ", optimal=" << (r2.optimal ? 1 : 0)
+                                  << ", current_valid_UB=" << best_valid_ub_
+                                  << "\n";
+                    }
+
+                    if (z_slave <= master_z + 1e-6)
+                    {
+                        bool improved_by_phase2 = false;
+
+                        if (accepted_z + 1e-6 < best_valid_ub_)
+                        {
+                            improved_by_phase2 = TryAcceptNewBestSolution(
+                                "MIPSOL-P2",
+                                ybar,
+                                tbar,
+                                xbar,
+                                master_z,
+                                truck_value,
+                                z_slave,
+                                accepted_z,
+                                CountSwapDecisions(r2),
+                                static_cast<int>(drone_customers.size()),
+                                r2.optimal,
+                                r2.optimal
+                                    ? "optimal slave value satisfies z_slave <= z_master"
+                                    : "non-optimal slave feasible value already satisfies z_slave <= z_master");
+                        }
+                        else
+                        {
+                            PrintRejectedMasterSolution(
+                                "MIPSOL-P2",
+                                "slave value satisfies z_slave <= z_master but accepted_z is not better than current UB",
+                                master_z,
+                                truck_value,
+                                z_slave,
+                                accepted_z,
+                                best_valid_ub_,
+                                static_cast<int>(drone_customers.size()),
+                                r2.optimal);
+                        }
+
+                        if (r2.optimal)
+                        {
+                            AddDroneSubsetLowerBoundCut(
+                                drone_customers,
+                                z_slave);
+                        }
+                        else if (r2.lower_bound_valid)
+                        {
+                            const double zD_value = getSolution(zD_);
+                            if (zD_value + 1e-6 < static_cast<double>(r2.lower_bound))
+                            {
+                                AddDroneSubsetLowerBoundCut(
+                                    drone_customers,
+                                    static_cast<double>(r2.lower_bound));
+                            }
+                        }
+
+                        if (improved_by_phase2)
+                        {
+                            RunSimpleIncumbentLocalSearch(
+                                xbar,
+                                drone_customers,
+                                r2);
+                        }
+
+                        return;
+                    }
+
+                    if (r2.optimal)
+                    {
+                        // Now z_slave = D*(S) and D*(S) > z_master.
+                        // The master underestimates the true drone cost for S,
+                        // so reject this master solution and cut it by zD >= D*(S).
+                        PrintRejectedMasterSolution(
+                            "MIPSOL-P2",
+                            "optimal slave value is greater than master_z; reject master candidate and add zD >= z_slave cut",
+                            master_z,
+                            truck_value,
+                            z_slave,
+                            accepted_z,
+                            best_valid_ub_,
+                            static_cast<int>(drone_customers.size()),
+                            true);
+
+                        AddDroneSubsetLowerBoundCut(
+                            drone_customers,
+                            z_slave);
+                        return;
+                    }
+
+                    // CP found a feasible solution, but it is not enough to accept
+                    // and not optimal enough to cut with z_slave.
+                    PrintRejectedMasterSolution(
+                        "MIPSOL-P2",
+                        "CP found z_slave > z_master but did not prove optimality; reject without strong z_slave cut",
+                        master_z,
+                        truck_value,
+                        z_slave,
+                        accepted_z,
+                        best_valid_ub_,
+                        static_cast<int>(drone_customers.size()),
+                        false);
+
+                    if (r2.lower_bound_valid)
+                    {
+                        const double zD_value = getSolution(zD_);
+                        if (zD_value + 1e-6 < static_cast<double>(r2.lower_bound))
+                        {
+                            AddDroneSubsetLowerBoundCut(
+                                drone_customers,
+                                static_cast<double>(r2.lower_bound));
+                        }
+                    }
+
+                    return;
+                }
+
+                if (!r2.feasible && r2.proven_infeasible)
+                {
+                    PrintRejectedMasterSolution(
+                        "MIPSOL-P2",
+                        "CP proved infeasible under UB-1, so D*(S) >= UB; add cutoff cut",
+                        master_z,
+                        truck_value,
+                        -1.0,
+                        -1.0,
+                        best_valid_ub_,
+                        static_cast<int>(drone_customers.size()),
+                        false);
+
+                    AddDroneSubsetLowerBoundCut(
+                        drone_customers,
+                        best_valid_ub_);
+                    return;
+                }
+
+                PrintRejectedMasterSolution(
+                    "MIPSOL-P2",
+                    "CP phase 2 returned unknown/no feasible solution and no proven cutoff infeasibility",
+                    master_z,
+                    truck_value,
+                    -1.0,
+                    -1.0,
+                    best_valid_ub_,
+                    static_cast<int>(drone_customers.size()),
+                    false);
+
+                if (r2.lower_bound_valid)
+                {
+                    const double zD_value = getSolution(zD_);
+                    if (zD_value + 1e-6 < static_cast<double>(r2.lower_bound))
+                    {
+                        AddDroneSubsetLowerBoundCut(
+                            drone_customers,
+                            static_cast<double>(r2.lower_bound));
+                    }
+                }
+                std::vector<Subtour> FindTruckSubtours(
+                    const std::vector<std::vector<int>> &xbar,
+                    const std::vector<int> &tbar) const
+                {
+                    const int N = inst_.NumNodes();
+                    const int start = inst_.start_depot;
+                    const int end = inst_.end_depot;
+
+                    std::vector<int> succ(N, -1);
+
+                    for (int i = 0; i < N; ++i)
+                    {
+                        for (int j = 0; j < N; ++j)
+                        {
+                            if (xbar[i][j] == 1)
+                            {
+                                succ[i] = j;
+                                break;
+                            }
+                        }
+                    }
+
+                    std::vector<bool> visited(N, false);
+
+                    int cur = start;
+                    while (cur != -1 && cur != end && !visited[cur])
+                    {
+                        visited[cur] = true;
+                        cur = succ[cur];
+                    }
+
+                    if (cur == end)
+                    {
+                        visited[end] = true;
+                    }
+
+                    std::vector<Subtour> subtours;
+
+                    for (int i = 1; i <= inst_.n; ++i)
+                    {
+                        if (tbar[i] == 0 || visited[i])
+                            continue;
+
+                        Subtour st;
+                        int v = i;
+                        std::set<int> local;
+
+                        while (v != -1 && !local.count(v) && v != start && v != end)
+                        {
+                            local.insert(v);
+                            st.nodes.push_back(v);
+                            visited[v] = true;
+                            v = succ[v];
+                        }
+
+                        if (!st.nodes.empty())
+                        {
+                            subtours.push_back(st);
+                        }
+                    }
+
+                    return subtours;
+                }
+
+                void AddSubtourCut(const Subtour &st)
+                {
+                    if (st.nodes.empty())
+                        return;
+
+                    GRBLinExpr lhs = 0.0;
+
+                    for (Node i : st.nodes)
+                    {
+                        for (Node j : st.nodes)
+                        {
+                            if (i == j)
+                                continue;
+                            lhs += x_[i][j];
+                        }
+                    }
+
+                    addLazy(lhs <= static_cast<int>(st.nodes.size()) - 1);
+
+                    if (options_.cut_verbose)
+                    {
+                        std::cout << "[CUT] subtour size=" << st.nodes.size() << "\n";
+                    }
+                }
+
+                void AddDroneNoGoodCut(const std::vector<Node> &drone_customers)
+                {
+                    if (drone_customers.empty())
+                        return;
+
+                    GRBLinExpr lhs = 0.0;
+
+                    for (Node i : drone_customers)
+                    {
+                        lhs += y_[i];
+                    }
+
+                    addLazy(lhs <= static_cast<int>(drone_customers.size()) - 1);
+
+                    if (options_.cut_verbose)
+                    {
+                        std::cout << "[CUT] drone no-good size=" << drone_customers.size() << "\n";
+                    }
+                }
+
+                void AddOptimalityCut(const std::vector<int> &ybar, double phi)
+                {
+                    GRBLinExpr hamming = 0.0;
+
+                    for (int i = 1; i <= inst_.n; ++i)
+                    {
+                        if (!inst_.drone_feasible[i])
+                            continue;
+
+                        if (ybar[i] == 1)
+                        {
+                            hamming += (1.0 - y_[i]);
+                        }
+                        else
+                        {
+                            hamming += y_[i];
+                        }
+                    }
+
+                    // Dynamic local Big-M for this assignment-specific optimality cut:
+                    //
+                    //     z + M(ybar) * HammingDistance(y, ybar) >= phi(ybar)
+                    //
+                    // Since z >= 0 and HammingDistance(y, ybar) >= 1 for any different
+                    // assignment, choosing M(ybar) >= phi(ybar) makes the cut inactive
+                    // for all assignments different from ybar.
+                    //
+                    // Therefore, M(ybar) = phi(ybar) is sufficient and much tighter than
+                    // using a global Big-M such as 1e7.
+                    const double local_m = std::max(1.0, phi);
+
+                    GRBLinExpr lhs = 0.0;
+                    lhs += z_;
+                    lhs += local_m * hamming;
+
+                    addLazy(lhs >= phi);
+
+                    if (options_.cut_verbose)
+                    {
+                        std::cout << "[CUT] optimality phi="
+                                  << phi
+                                  << ", local_M="
+                                  << local_m
+                                  << "\n";
+                    }
+                }
+
+                double ComputeTruckValue(
+                    const std::vector<std::vector<int>> &xbar) const
+                {
+                    double value = 0.0;
+                    const int N = inst_.NumNodes();
+
+                    for (int i = 0; i < N; ++i)
+                    {
+                        for (int j = 0; j < N; ++j)
+                        {
+                            if (xbar[i][j] == 1)
+                            {
+                                value += static_cast<double>(inst_.truck_time[i][j]);
+                            }
+                        }
+                    }
+
+                    return value;
+                }
+            };
+
+            int ClampInt(int value, int low, int high)
+            {
+                return std::max(low, std::min(high, value));
+            }
+
+            double TruckRoundTripApprox(const bbcp::Instance &inst, bbcp::Node i)
+            {
+                return static_cast<double>(
+                    inst.truck_time[inst.start_depot][i] +
+                    inst.truck_time[i][inst.end_depot]);
+            }
+
+            void SetMasterBranchingStrategy(
+                const bbcp::Instance &inst,
+                const bbcp::MasterOptions &options,
+                std::vector<GRBVar> &y,
+                std::vector<GRBVar> &t,
+                std::vector<std::vector<GRBVar>> &x,
+                GRBVar &q)
+            {
+                if (options.branching_strategy == bbcp::MasterBranchingStrategy::Default)
+                {
+                    return;
+                }
+
+                const int N = inst.NumNodes();
+
+                double min_cp_score = 1e100;
+                double max_cp_score = -1e100;
+
+                double min_diff_score = 1e100;
+                double max_diff_score = -1e100;
+
+                double min_benefit_score = 0.0;
+                double max_benefit_score = 0.0;
+
+                if (options.branching_strategy == MasterBranchingStrategy::Hybrid)
+                {
+                    for (int i = 1; i <= inst.n; ++i)
+                    {
+                        if (!inst.drone_feasible[i])
+                            continue;
+
+                        const double ri =
+                            static_cast<double>(inst.DroneRoundTripTime(i));
+
+                        const double ei =
+                            static_cast<double>(inst.energy[i]);
+
+                        const double truck_round =
+                            TruckRoundTripApprox(inst, i);
+
+                        const double cp_score = 0.5 * ri + 2.0 * ei;
+                        const double diff_score = std::abs(truck_round - ri);
+                        const double benefit_score = std::max(0.0, truck_round - ri);
+
+                        min_cp_score = std::min(min_cp_score, cp_score);
+                        max_cp_score = std::max(max_cp_score, cp_score);
+
+                        min_diff_score = std::min(min_diff_score, diff_score);
+                        max_diff_score = std::max(max_diff_score, diff_score);
+
+                        max_benefit_score = std::max(max_benefit_score, benefit_score);
+                    }
+                }
+
+                // 1. Priority cho các biến assignment y_i, t_i.
+                for (int i = 1; i <= inst.n; ++i)
+                {
+                    if (!inst.drone_feasible[i])
+                        continue;
+
+                    const double ri =
+                        static_cast<double>(inst.DroneRoundTripTime(i));
+                    const double ei =
+                        static_cast<double>(inst.energy[i]);
+                    const double truck_round =
+                        TruckRoundTripApprox(inst, i);
+
+                    int priority = 100;
+                    double hint_y = 1.0;
+
+                    switch (options.branching_strategy)
+                    {
+
+                    case MasterBranchingStrategy::Hybrid:
+                    {
+                        const double cp_raw = 0.5 * ri + 2.0 * ei;
+                        const double diff_raw = std::abs(truck_round - ri);
+                        const double benefit_raw = std::max(0.0, truck_round - ri);
+
+                        const double cp_norm =
+                            SafeNormalize(cp_raw, min_cp_score, max_cp_score);
+
+                        const double ambiguity_norm =
+                            1.0 - SafeNormalize(diff_raw, min_diff_score, max_diff_score);
+
+                        const double benefit_norm =
+                            SafeNormalize(benefit_raw, min_benefit_score, max_benefit_score);
+
+                        const double w_cp = 0.45;
+                        const double w_amb = 0.25;
+                        const double w_benefit = 0.30;
+
+                        const double hybrid_score =
+                            w_cp * cp_norm +
+                            w_amb * ambiguity_norm +
+                            w_benefit * benefit_norm;
+
+                        priority = 80 + static_cast<int>(220.0 * hybrid_score);
+                        priority = ClampInt(priority, 80, 300);
+
+                        // Hint rule:
+                        // 1. Nếu quá tốn pin thì ưu tiên truck.
+                        // 2. Nếu drone có benefit dương thì ưu tiên drone.
+                        // 3. Nếu không, ưu tiên phương án có round-trip nhỏ hơn.
+                        if (ei > 0.7 * static_cast<double>(inst.battery_capacity))
+                        {
+                            hint_y = 0.0;
+                        }
+                        else if (truck_round > ri)
+                        {
+                            hint_y = 1.0;
+                        }
+                        else
+                        {
+                            hint_y = 0.0;
+                        }
+
+                        break;
+                    }
+
+                    case bbcp::MasterBranchingStrategy::AssignmentFirst:
+                    {
+                        priority = 150;
+                        hint_y = 1.0;
+                        break;
+                    }
+
+                    case bbcp::MasterBranchingStrategy::CPAware:
+                    {
+                        // Khách làm CP khó hơn thì branch sớm hơn.
+                        const double score = 0.5 * ri + 2.0 * ei;
+                        priority = 100 + static_cast<int>(score / 100.0);
+                        priority = ClampInt(priority, 100, 300);
+
+                        if (ei > 0.7 * static_cast<double>(inst.battery_capacity))
+                        {
+                            hint_y = 0.0; // nghiêng về truck
+                        }
+                        else
+                        {
+                            hint_y = 1.0; // nghiêng về drone
+                        }
+                        break;
+                    }
+
+                    case bbcp::MasterBranchingStrategy::AmbiguityFirst:
+                    {
+                        // Khách có truck/drone gần tương đương thì branch sớm.
+                        const double diff = std::abs(truck_round - ri);
+                        priority = 220 - static_cast<int>(diff / 60.0);
+                        priority = ClampInt(priority, 80, 220);
+
+                        hint_y = (ri < truck_round ? 1.0 : 0.0);
+                        break;
+                    }
+
+                    case bbcp::MasterBranchingStrategy::DroneBenefit:
+                    {
+                        // Khách có lợi nhiều nếu đi drone thì branch sớm.
+                        const double benefit = truck_round - ri;
+                        priority = 100 + static_cast<int>(benefit / 60.0);
+                        priority = ClampInt(priority, 80, 250);
+
+                        hint_y = (benefit > 0.0 ? 1.0 : 0.0);
+                        break;
+                    }
+
+                    case bbcp::MasterBranchingStrategy::Default:
+                        break;
+                    }
+
+                    y[i].set(GRB_IntAttr_BranchPriority, priority);
+                    t[i].set(GRB_IntAttr_BranchPriority, std::max(1, priority - 10));
+
+                    if (options.use_branching_var_hints)
+                    {
+                        y[i].set(GRB_DoubleAttr_VarHintVal, hint_y);
+                        y[i].set(GRB_IntAttr_VarHintPri, priority);
+
+                        t[i].set(GRB_DoubleAttr_VarHintVal, 1.0 - hint_y);
+                        t[i].set(GRB_IntAttr_VarHintPri, std::max(1, priority - 10));
+                    }
+                }
+
+                // 2. Arc variables x_ij có priority thấp hơn.
+                for (int i = 0; i < N; ++i)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (i == j)
+                            continue;
+                        if (i == inst.end_depot)
+                            continue;
+                        if (j == inst.start_depot)
+                            continue;
+
+                        if (!x[i][j].sameAs(GRBVar()))
+                        {
+                            x[i][j].set(GRB_IntAttr_BranchPriority, 50);
+                        }
+                    }
+                }
+
+                // 3. q có priority thấp nhất.
+                q.set(GRB_IntAttr_BranchPriority, 20);
+
+                if (options.verbose)
+                {
+                    std::cout << "[BRANCHING] strategy = "
+                              << bbcp::MasterBranchingStrategyName(options.branching_strategy)
+                              << "\n";
+
+                    std::cout << "[BRANCHING] var hints = "
+                              << (options.use_branching_var_hints ? "on" : "off")
+                              << "\n";
+                }
+            }
+
+        } // namespace
+
+        MasterBranchingStrategy ParseMasterBranchingStrategy(
+            const std::string &mode_raw)
+        {
+            std::string mode = mode_raw;
+            for (char &c : mode)
+            {
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+
+            if (mode == "hybrid" ||
+                mode == "mix" ||
+                mode == "mixed")
+            {
+                return MasterBranchingStrategy::Hybrid;
+            }
+            if (mode == "default" || mode == "none" || mode == "off")
+            {
+                return MasterBranchingStrategy::Default;
+            }
+
+            if (mode == "assignment" ||
+                mode == "assignment-first" ||
+                mode == "assign")
+            {
+                return MasterBranchingStrategy::AssignmentFirst;
+            }
+
+            if (mode == "cp" ||
+                mode == "cp-aware" ||
+                mode == "cpaware")
+            {
+                return MasterBranchingStrategy::CPAware;
+            }
+
+            if (mode == "ambiguity" ||
+                mode == "ambiguity-first" ||
+                mode == "ambiguous")
+            {
+                return MasterBranchingStrategy::AmbiguityFirst;
+            }
+
+            if (mode == "benefit" ||
+                mode == "drone-benefit" ||
+                mode == "drone")
+            {
+                return MasterBranchingStrategy::DroneBenefit;
+            }
+
+            throw std::runtime_error(
+                "Unknown branching strategy: " + mode_raw +
+                ". Use default, assignment, cp-aware, ambiguity, or drone-benefit.");
+        }
+
+        std::string MasterBranchingStrategyName(
+            MasterBranchingStrategy strategy)
+        {
+            switch (strategy)
+            {
+            case MasterBranchingStrategy::Hybrid:
+                return "hybrid";
+            case MasterBranchingStrategy::Default:
+                return "default";
+            case MasterBranchingStrategy::AssignmentFirst:
+                return "assignment-first";
+            case MasterBranchingStrategy::CPAware:
+                return "cp-aware";
+            case MasterBranchingStrategy::AmbiguityFirst:
+                return "ambiguity-first";
+            case MasterBranchingStrategy::DroneBenefit:
+                return "drone-benefit";
+            }
+            return "unknown";
+        }
+
+        MasterProblem::MasterProblem(const Instance &inst, const MasterOptions &options)
+            : inst_(inst), options_(options) {}
+
+        void MasterProblem::Solve()
+        {
+            const int N = inst_.NumNodes();
+            const int start = inst_.start_depot;
+            const int end = inst_.end_depot;
+
+            if (options_.verbose)
+            {
+                std::cout << "Master subtour mode: "
+                          << MasterSubtourModeName(options_.subtour_mode)
+                          << "\n";
+            }
+
+            GRBEnv env(true);
+            env.set(GRB_IntParam_OutputFlag, options_.verbose ? 1 : 0);
+            env.start();
+
+            GRBModel model(env);
+            model.set(GRB_StringAttr_ModelName, "MILP_master_CP_subproblem");
+
+            // Lazy constraints are needed for:
+            //   - subtour cuts in LazyCut mode,
+            //   - CP no-good cuts and optimality cuts in both modes.
+            model.set(GRB_IntParam_LazyConstraints, 1);
+
+            // Needed when adding user cuts from MIPNODE callback.
+            // It makes cuts refer more safely to original model variables.
+            model.set(GRB_IntParam_PreCrush, 1);
+
+            // model.set(GRB_DoubleParam_MIPGap, 0.01);
+
+            if (options_.time_limit_seconds > 0.0)
+            {
+                model.set(GRB_DoubleParam_TimeLimit, options_.time_limit_seconds);
+            }
+
+            // if (options_.mip_gap > 0.0) {
+            //     model.set(GRB_DoubleParam_MIPGap, options_.mip_gap);
+            // }
+
+            std::vector<GRBVar> y(N);
+            std::vector<GRBVar> t(N);
+
+            for (int i = 1; i <= inst_.n; ++i)
+            {
+                y[i] = model.addVar(
+                    0.0,
+                    1.0,
+                    0.0,
+                    GRB_BINARY,
+                    "y_" + std::to_string(i));
+
+                t[i] = model.addVar(
+                    0.0,
+                    1.0,
+                    0.0,
+                    GRB_BINARY,
+                    "t_" + std::to_string(i));
+            }
+
+            std::vector<std::vector<GRBVar>> x(N, std::vector<GRBVar>(N));
+
+            for (int i = 0; i < N; ++i)
+            {
+                for (int j = 0; j < N; ++j)
+                {
+                    if (!IsMasterTruckArcAllowed(inst_, i, j))
+                        continue;
+
+                    x[i][j] = model.addVar(
+                        0.0,
+                        1.0,
+                        0.0,
+                        GRB_BINARY,
+                        "x_" + std::to_string(i) + "_" + std::to_string(j));
+                }
+            }
+
+            GRBVar q = model.addVar(
+                0.0,
+                GRB_INFINITY,
+                0.0,
+                GRB_INTEGER,
+                "q_swap_lb");
+
+            GRBVar zT = model.addVar(
+                0.0,
+                GRB_INFINITY,
+                0.0,
+                GRB_CONTINUOUS,
+                "z_truck");
+
+            GRBVar zD = model.addVar(
+                0.0,
+                GRB_INFINITY,
+                0.0,
+                GRB_CONTINUOUS,
+                "z_drone");
+
+            GRBVar z = model.addVar(
+                0.0,
+                GRB_INFINITY,
+                1.0,
+                GRB_CONTINUOUS,
+                "z");
+
+            // MTZ order variable for truck path.
+            // It is only used in MTZ mode.
+            std::vector<GRBVar> ord(N);
+            if (options_.subtour_mode == MasterSubtourMode::MTZ)
+            {
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    ord[i] = model.addVar(
+                        0.0,
+                        static_cast<double>(inst_.n),
+                        0.0,
+                        GRB_CONTINUOUS,
+                        "ord_" + std::to_string(i));
+                }
+            }
+
+            model.update();
+
+            SetMasterBranchingStrategy(
+                inst_,
+                options_,
+                y,
+                t,
+                x,
+                q);
+
+            // ------------------------------------------------------------------
+            // Master preprocessing / variable fixing.
+            // ------------------------------------------------------------------
+            const double initial_ub = GreedyAllTruckUpperBound(inst_);
+
+            MasterPreprocessStats prep_stats = ApplyMasterPreprocessing(
+                inst_,
+                initial_ub,
+                y,
+                t,
+                x,
+                z);
+
+            if (options_.verbose)
+            {
+                std::cout << "[PREPROCESS] all-truck greedy UB = "
+                          << prep_stats.initial_all_truck_ub << "\n";
+
+                std::cout << "[PREPROCESS] fixed_not_drone = "
+                          << prep_stats.fixed_not_drone << "\n";
+
+                std::cout << "[PREPROCESS] fixed_drone_by_energy = "
+                          << prep_stats.fixed_drone_by_energy << "\n";
+
+                std::cout << "[PREPROCESS] fixed_drone_by_roundtrip_ub = "
+                          << prep_stats.fixed_drone_by_roundtrip_ub << "\n";
+
+                std::cout << "[PREPROCESS] fixed_truck_arcs_by_ub = "
+                          << prep_stats.fixed_truck_arcs_by_ub << "\n";
+            }
+
+            // Assignment constraints.
+            for (int i = 1; i <= inst_.n; ++i)
+            {
+                if (inst_.drone_feasible[i])
+                {
+                    model.addConstr(
+                        y[i] + t[i] == 1.0,
+                        "assign_" + std::to_string(i));
+                }
+                else
+                {
+                    model.addConstr(
+                        y[i] == 0.0,
+                        "force_not_drone_" + std::to_string(i));
+
+                    model.addConstr(
+                        t[i] == 1.0,
+                        "force_truck_" + std::to_string(i));
+                }
+            }
+
+            // Start depot: exactly one outgoing truck arc.
+            {
+                GRBLinExpr out_start = 0.0;
+
+                for (int j = 0; j < N; ++j)
+                {
+                    if (!IsMasterTruckArcAllowed(inst_, start, j))
+                        continue;
+                    out_start += x[start][j];
+                }
+
+                model.addConstr(out_start == 1.0, "start_out");
+            }
+
+            // End depot: exactly one incoming truck arc.
+            {
+                GRBLinExpr in_end = 0.0;
+
+                for (int i = 0; i < N; ++i)
+                {
+                    if (!IsMasterTruckArcAllowed(inst_, i, end))
+                        continue;
+                    in_end += x[i][end];
+                }
+
+                model.addConstr(in_end == 1.0, "end_in");
+            }
+
+            // Customer degree constraints.
+            for (int i = 1; i <= inst_.n; ++i)
+            {
+                GRBLinExpr out_i = 0.0;
+                GRBLinExpr in_i = 0.0;
+
+                for (int j = 0; j < N; ++j)
+                {
+                    if (IsMasterTruckArcAllowed(inst_, i, j))
+                    {
+                        out_i += x[i][j];
+                    }
+
+                    if (IsMasterTruckArcAllowed(inst_, j, i))
+                    {
+                        in_i += x[j][i];
+                    }
+                }
+
+                model.addConstr(
+                    out_i == t[i],
+                    "truck_out_" + std::to_string(i));
+
+                model.addConstr(
+                    in_i == t[i],
+                    "truck_in_" + std::to_string(i));
+            }
+
+            // ------------------------------------------------------------------
+            // MTZ subtour elimination version.
+            //
+            // These constraints are added only in MTZ mode.
+            //
+            // For truck customers:
+            //   1 <= ord_i <= n if t_i = 1
+            //   ord_i = 0 if t_i = 0
+            //
+            // For any arc i -> j between two real customers:
+            //   ord_j >= ord_i + 1 - n(1 - x_ij)
+            //
+            // This eliminates cycles among customer nodes.
+            // ------------------------------------------------------------------
+            if (options_.subtour_mode == MasterSubtourMode::MTZ)
+            {
+                const double M = static_cast<double>(inst_.n);
+
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    model.addConstr(
+                        ord[i] <= M * t[i],
+                        "mtz_ord_ub_" + std::to_string(i));
+
+                    model.addConstr(
+                        ord[i] >= t[i],
+                        "mtz_ord_lb_" + std::to_string(i));
+                }
+
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    for (int j = 1; j <= inst_.n; ++j)
+                    {
+                        if (i == j)
+                            continue;
+                        if (!IsMasterTruckArcAllowed(inst_, i, j))
+                            continue;
+
+                        model.addConstr(
+                            ord[j] >= ord[i] + 1.0 - M * (1.0 - x[i][j]),
+                            "mtz_" + std::to_string(i) + "_" + std::to_string(j));
+                    }
+                }
+            }
+
+            GRBLinExpr truck_cost = 0.0;
+
+            for (int i = 0; i < N; ++i)
+            {
+                for (int j = 0; j < N; ++j)
+                {
+                    if (!IsMasterTruckArcAllowed(inst_, i, j))
+                        continue;
+
+                    truck_cost += static_cast<double>(inst_.truck_time[i][j]) * x[i][j];
+                }
+            }
+
+            model.addConstr(zT >= truck_cost, "truck_cost_lb");
+
+            GRBLinExpr drone_work = 0.0;
+            GRBLinExpr energy_required = 0.0;
+            GRBLinExpr drone_count = 0.0;
+            double min_drone_roundtrip = std::numeric_limits<double>::infinity();
+
+            for (int i = 1; i <= inst_.n; ++i)
+            {
+                if (!inst_.drone_feasible[i])
+                    continue;
+
+                const double ri = static_cast<double>(inst_.DroneRoundTripTime(i));
+                const double ei = static_cast<double>(inst_.energy[i]);
+
+                drone_work += ri * y[i];
+                energy_required += ei * y[i];
+                drone_count += y[i];
+                min_drone_roundtrip = std::min(min_drone_roundtrip, ri);
+
+                model.addConstr(
+                    zD >= ri * y[i],
+                    "drone_single_" + std::to_string(i));
+            }
+
+            // Valid inequality: q is a lower-bound variable for the number of
+            // battery swaps, and the actual number of swaps can never exceed the
+            // number of drone-served customers.
+            model.addConstr(q <= drone_count, "swap_lb_not_exceed_drone_count");
+
+            // Valid inequality: each drone customer requires at least the minimum
+            // round-trip drone time. This is implied by the workload bound, but the
+            // explicit count form may help the LP relaxation.
+            if (std::isfinite(min_drone_roundtrip))
+            {
+                model.addConstr(
+                    min_drone_roundtrip * drone_count <=
+                        static_cast<double>(inst_.n_drones) * zD,
+                    "drone_customer_count_lb");
+            }
+
+            model.addConstr(
+                static_cast<double>(inst_.n_drones) * zD >=
+                    drone_work + static_cast<double>(inst_.swap_time) * q,
+                "drone_workload_lb");
+
+            model.addConstr(
+                static_cast<double>(inst_.battery_capacity) *
+                        (static_cast<double>(inst_.n_drones) + q) >=
+                    energy_required,
+                "drone_energy_cycle_lb");
+
+            model.addConstr(z >= zT, "z_ge_truck");
+            model.addConstr(z >= zD, "z_ge_drone");
+
+            GRBLinExpr objective = 0.0;
+            objective += z;
+            model.setObjective(objective, GRB_MINIMIZE);
+
+            CPSubproblem cp(inst_);
+            MasterCallback cb(inst_, options_, cp, y, t, x, z, zT, zD, initial_ub);
+            model.setCallback(&cb);
+
+            model.optimize();
+
+            const int status = model.get(GRB_IntAttr_Status);
+
+            std::cout << "\n=== Master solve finished ===\n";
+            std::cout << "Gurobi status: " << status << "\n";
+
+            if (model.get(GRB_IntAttr_SolCount) > 0)
+            {
+                std::cout << "Best objective z: "
+                          << model.get(GRB_DoubleAttr_ObjVal)
+                          << "\n";
+
+                std::vector<int> ysol(N, 0);
+                std::vector<int> tsol(N, 0);
+                std::vector<std::vector<int>> xsol(N, std::vector<int>(N, 0));
+
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    ysol[i] = (inst_.drone_feasible[i] &&
+                               y[i].get(GRB_DoubleAttr_X) > 0.5)
+                                  ? 1
+                                  : 0;
+
+                    tsol[i] = (t[i].get(GRB_DoubleAttr_X) > 0.5) ? 1 : 0;
+                }
+
+                for (int i = 0; i < N; ++i)
+                {
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (!IsMasterTruckArcAllowed(inst_, i, j))
+                            continue;
+
+                        xsol[i][j] = (x[i][j].get(GRB_DoubleAttr_X) > 0.5) ? 1 : 0;
+                    }
+                }
+
+                std::vector<Node> truck_route = DecodeTruckRouteFromX(inst_, xsol);
+
+                std::vector<Node> drone_customers;
+                std::vector<Node> truck_customers;
+
+                for (int i = 1; i <= inst_.n; ++i)
+                {
+                    if (ysol[i] == 1)
+                    {
+                        drone_customers.push_back(i);
+                    }
+                    else
+                    {
+                        truck_customers.push_back(i);
+                    }
+                }
+
+                CPSubproblem cp_final(inst_);
+                CPOptions final_cp_options = options_.cp_options;
+                final_cp_options.time_limit_seconds =
+                    std::max(final_cp_options.time_limit_seconds, 10.0);
+
+                CPResult final_drone = cp_final.SolveDroneSubproblem(
+                    drone_customers,
+                    final_cp_options);
+
+                std::cout << "\n=== Final decoded solution ===\n";
+
+                std::cout << "Truck customers set: ";
+                for (Node i : truck_customers)
+                {
+                    std::cout << i << " ";
+                }
+                std::cout << "\n";
+
+                std::cout << "Drone customers set: ";
+                for (Node i : drone_customers)
+                {
+                    std::cout << i << " ";
+                }
+                std::cout << "\n";
+
+                std::cout << "\nOrdered truck route:\n  ";
+                PrintRoute("", truck_route);
+
+                if (final_drone.feasible)
+                {
+                    std::cout << "\nDrone makespan: "
+                              << final_drone.objective
+                              << " seconds ("
+                              << final_drone.objective / 60.0
+                              << " minutes)\n";
+
+                    PrintDroneChainsAsTours(inst_, final_drone);
+                }
+                else
+                {
+                    std::cout << "\n[WARN] Final CP drone subproblem was not solved feasible.\n";
+                }
+
+                // ---------------------------------------------------------------
+                // 6. Export final result to CSV.
+                // ---------------------------------------------------------------
+                double obj = model.get(GRB_DoubleAttr_ObjVal);
+                double lower_bound = model.get(GRB_DoubleAttr_ObjBound);
+                double runtime_sec = model.get(GRB_DoubleAttr_Runtime);
+
+                double mip_gap = -1.0;
+                try
+                {
+                    mip_gap = model.get(GRB_DoubleAttr_MIPGap);
+                }
+                catch (...)
+                {
+                    mip_gap = -1.0;
+                }
+
+                double truck_time = ComputeTruckTimeFromX(inst_, xsol);
+
+                double drone_makespan = -1.0;
+                if (final_drone.feasible)
+                {
+                    drone_makespan = static_cast<double>(final_drone.objective);
+                }
+
+                double final_makespan = truck_time;
+                if (final_drone.feasible)
+                {
+                    final_makespan = std::max(truck_time, drone_makespan);
+                }
+
+                ExportFinalResultCSV(
+                    options_.result_file,
+                    options_,
+                    inst_,
+                    status,
+                    obj,
+                    lower_bound,
+                    mip_gap,
+                    runtime_sec,
+                    truck_time,
+                    drone_makespan,
+                    final_makespan,
+                    truck_customers,
+                    drone_customers,
+                    truck_route,
+                    final_drone);
+            }
+            else
+            {
+                double runtime_sec = model.get(GRB_DoubleAttr_Runtime);
+
+                double lower_bound = -1.0;
+                try
+                {
+                    lower_bound = model.get(GRB_DoubleAttr_ObjBound);
+                }
+                catch (...)
+                {
+                    lower_bound = -1.0;
+                }
+
+                ExportNoSolutionCSV(
+                    options_.result_file,
+                    options_,
+                    inst_,
+                    status,
+                    lower_bound,
+                    runtime_sec);
+            }
+        }
+
+    } // namespace bbcp

@@ -1,0 +1,75 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\newcommand{\C}{\mathcal{C}}
+\newcommand{\K}{\mathcal{K}}
+\newcommand{\UB}{\mathrm{UB}}
+
+\title{Thuật toán Master--Slave: Master gán khách cho từng drone, Slave sắp xếp thứ tự}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Luồng thuật toán}
+
+Master quyết định truck route, khách đi truck, khách đi drone, và drone nào phục vụ khách nào. Với mỗi drone \(k\), slave nhận tập cố định
+\[
+    S_k=\{i\in\C:a_{ik}=1\}
+\]
+và chỉ giải bài toán sắp xếp thứ tự phục vụ cùng vị trí đổi pin.
+
+\begin{algorithm}[H]
+\caption{Master gán drone, Slave chỉ sắp xếp thứ tự từng drone}
+\begin{algorithmic}[1]
+\State Khởi tạo \(\UB\) bằng nghiệm all-truck greedy.
+\State Khởi tạo tập cut \(\mathcal{B}\gets\emptyset\).
+\For{\(iter=1,2,\ldots\)}
+    \State Giải master với các cut trong \(\mathcal{B}\) và ràng buộc \(z\le \UB-1\).
+    \If{master vô nghiệm}
+        \State Dừng; nghiệm tốt nhất hiện tại là incumbent.
+    \EndIf
+    \State Lấy truck route và các tập \(S_k=\{i:a_{ik}=1\}\).
+    \For{mỗi drone \(k\in\K\)}
+        \State Giải slave một-drone với input \(S_k\).
+        \If{slave tối ưu với giá trị \(\theta_k\)}
+            \State Thêm cut
+            \[
+                z_k+M\left(|S_k|-\sum_{i\in S_k}a_{ik}\right)\ge \theta_k.
+            \]
+        \ElsIf{slave vô nghiệm dưới \(\UB-1\)}
+            \State Thêm cut
+            \[
+                z_k+M\left(|S_k|-\sum_{i\in S_k}a_{ik}\right)\ge \UB.
+            \]
+        \EndIf
+    \EndFor
+    \State Tính \(z_{\mathrm{acc}}=\max\{z_T,\max_k \theta_k\}\).
+    \If{\(z_{\mathrm{acc}}<\UB\)}
+        \State Cập nhật incumbent và \(\UB\gets z_{\mathrm{acc}}\).
+        \State Chạy local search để cải thiện thêm.
+    \EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\section{Các thành phần trong code}
+
+\begin{itemize}
+    \item \texttt{MasterProblem}: điều phối quá trình giải.
+    \item \texttt{MasterModelBuilder}: nơi chuyển mô hình master vào Gurobi/CP-SAT.
+    \item \texttt{MasterCallback}: nơi xử lý nghiệm nguyên master, gọi slave, thêm cut.
+    \item \texttt{MasterCuts}: nơi hiện thực các cut dạng tập con cho từng drone.
+    \item \texttt{SingleDroneOrderingSlave}: slave cho một drone cố định.
+    \item \texttt{LocalSearch}: các move Truck-to-Drone, Drone-to-Truck, Drone-to-Drone.
+\end{itemize}
+
+\end{document}

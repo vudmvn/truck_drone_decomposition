@@ -1,0 +1,407 @@
+Loaded instance: ./data/instances/30-c-2-r-swap-5.txt
+  customers      : 30
+  drone feasible : 25
+  drones         : 4
+  swap time      : 300 seconds
+  battery cap    : 1000
+  drone endurance: 2160 seconds
+  drone time lim.: 5400 seconds
+[SOLVE] exact decomposition master, instance=./data/instances/30-c-2-r-swap-5.txt, n=30, drones=4, slave=cp
+[INIT] all-truck valid UB=10874
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2715477
+Academic license 2715477 - for non-commercial use only - registered to 11___@st.neu.edu.vn
+Set parameter LazyConstraints to value 1
+Set parameter PreCrush to value 1
+Set parameter MIPFocus to value 3
+Set parameter Cuts to value 2
+Set parameter TimeLimit to value 3600
+[MASTER] truck subtour mode=sec; MTZ constraints disabled, lazy SEC enabled
+[SLAVE] requested=cp, actual=k-drone-ordering-cpsat
+Gurobi Optimizer version 13.0.1 build v13.0.1rc0 (linux64 - "Debian GNU/Linux 12 (bookworm)")
+
+CPU model: 13th Gen Intel(R) Core(TM) i5-13500, instruction set [SSE2|AVX|AVX2]
+Thread count: 20 physical cores, 20 logical processors, using up to 20 threads
+
+Non-default parameters:
+TimeLimit  3600
+MIPFocus  3
+Cuts  2
+PreCrush  1
+LazyConstraints  1
+
+Academic license 2715477 - for non-commercial use only - registered to 11___@st.neu.edu.vn
+Optimize a model with 157 rows, 995 columns and 3166 nonzeros (Min)
+Model fingerprint: 0x3343531a
+Model has 1 linear objective coefficients
+Variable types: 3 continuous, 992 integer (991 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 4e+03]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+04]
+  RHS range        [1e+00, 4e+03]
+
+Using variable hints.
+Using branch priorities.
+Presolve removed 63 rows and 35 columns
+Presolve time: 0.01s
+Presolved: 94 rows, 960 columns, 2964 nonzeros
+Variable types: 3 continuous, 957 integer (956 binary)
+Root relaxation presolved: 101 rows, 960 columns, 2984 nonzeros
+
+
+Use crossover to convert LP symmetric solution to basic solution...
+Crossover time: 0.00 seconds (0.00 work units)
+
+Root relaxation: objective 4.034000e+03, 96 iterations, 0.00 seconds (0.00 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0 4034.00000    0    4          - 4034.00000      -     -    0s
+
+[MIPSOL] slave-assign master_z=10035, truck=8206, zD_master=10035, |S|=21, UB=10874
+  [SLAVE-CALL] drone=-1, |S|=21, cutoff=10873, S={1,4,5,7,8,9,11,12,13,14,15,16,17,18,19,20,22,23,24,25,26}
+  [SLAVE-RESULT] drone=-1, |S|=21, cutoff=10873, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=10390, lb=2142, wall_time=5.00278, S={1,4,5,7,8,9,11,12,13,14,15,16,17,18,19,20,22,23,24,25,26}
+                 chains_size: 4
+                 drone 0 chain: 1 -> 7 -> 19 -> [SWAP] 8 -> [SWAP] 18 -> 25
+                 drone 0 swaps_before: 8,18
+                 drone 1 chain: 9 -> 14 -> [SWAP] 22 -> 24 -> [SWAP] 4
+                 drone 1 swaps_before: 22,4
+                 drone 2 chain: 15 -> [SWAP] 17 -> [SWAP] 5 -> 16 -> [SWAP] 13
+                 drone 2 swaps_before: 17,5,13
+                 drone 3 chain: 26 -> [SWAP] 20 -> [SWAP] 11 -> 23 -> [SWAP] 12
+                 drone 3 swaps_before: 20,11,12
+                 assigned_count: 21, expected=21
+  [SLAVE-SUMMARY] mode=slave-assign, truck=8206, drone_makespan=10390, accepted_z=10390, submitted_master_z=10390, master_z=10035, current_UB=10874
+
+[NEW BEST] accepted_z=10390, submitted_master_z=10390, truck=8206, drone=10390
+H    0     0                    10035.000000 4034.00000  59.8%     -    5s
+
+[MIPSOL] slave-assign master_z=8434.5, truck=8288, zD_master=8434.5, |S|=18, UB=10390
+  [SLAVE-CALL] drone=-1, |S|=18, cutoff=10389, S={4,5,7,9,12,13,14,15,17,18,19,20,22,23,24,25,26,30}
+  [SLAVE-RESULT] drone=-1, |S|=18, cutoff=10389, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=8612, lb=2142, wall_time=5.00288, S={4,5,7,9,12,13,14,15,17,18,19,20,22,23,24,25,26,30}
+                 chains_size: 4
+                 drone 0 chain: 4 -> [SWAP] 26 -> [SWAP] 19 -> 24
+                 drone 0 swaps_before: 26,19
+                 drone 1 chain: 9 -> 13 -> [SWAP] 18 -> 30 -> [SWAP] 14
+                 drone 1 swaps_before: 18,14
+                 drone 2 chain: 17 -> 25 -> [SWAP] 7 -> 12 -> 22
+                 drone 2 swaps_before: 7
+                 drone 3 chain: 23 -> [SWAP] 15 -> [SWAP] 5 -> 20
+                 drone 3 swaps_before: 15,5
+                 assigned_count: 18, expected=18
+  [SLAVE-SUMMARY] mode=slave-assign, truck=8288, drone_makespan=8612, accepted_z=8612, submitted_master_z=8612, master_z=8434.5, current_UB=10390
+
+[NEW BEST] accepted_z=8612, submitted_master_z=8612, truck=8288, drone=8612
+H    0     0                    8434.5000000 4034.00000  52.2%     -   10s
+     0     0 4034.00000    0   10 8434.50000 4034.00000  52.2%     -   10s
+     0     0 4034.00000    0   44 8434.50000 4034.00000  52.2%     -   10s
+     0     0 4240.19463    0   28 8434.50000 4240.19463  49.7%     -   10s
+     0     0 4514.00957    0   11 8434.50000 4514.00957  46.5%     -   10s
+     0     0 4514.00957    0    5 8434.50000 4514.00957  46.5%     -   10s
+
+[MIPSOL] slave-assign master_z=8386, truck=7807, zD_master=8386, |S|=19, UB=8612
+  [SLAVE-CALL] drone=-1, |S|=19, cutoff=8611, S={1,4,5,7,8,9,11,12,13,14,15,16,17,18,20,22,24,29,30}
+  [SLAVE-RESULT] drone=-1, |S|=19, cutoff=8611, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=8386, wall_time=5.00231, S={1,4,5,7,8,9,11,12,13,14,15,16,17,18,20,22,24,29,30}
+[CUT] global drone subset-LB, |S|=19, rhs=8386, S={1,4,5,7,8,9,11,12,13,14,15,16,17,18,20,22,24,29,30}
+H    0     0                    8386.0000000 4514.74670  46.2%     -   15s
+[USERCUT] slave-assign energy cover, |H|=7, R=1, lhs=0.475121, rhs=1, H={4,15,24,14,20,13,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.475121, rhs=1, H={4,15,24,14,20,13,22,7}
+     0     0 4646.49132    0   31 8386.00000 4646.49132  44.6%     -   15s
+     0     0 4825.13615    0   22 8386.00000 4825.13615  42.5%     -   15s
+     0     0 5190.26846    0    4 8386.00000 5190.26846  38.1%     -   15s
+     0     0 5319.42675    0   38 8386.00000 5319.42675  36.6%     -   15s
+
+[MIPSOL] slave-assign master_z=8345, truck=8043, zD_master=8345, |S|=18, UB=8612
+  [SLAVE-CALL] drone=-1, |S|=18, cutoff=8611, S={1,4,5,7,9,11,12,13,14,15,17,19,22,23,24,25,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=18, cutoff=8611, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=8345, wall_time=5.00417, S={1,4,5,7,9,11,12,13,14,15,17,19,22,23,24,25,26,28}
+[CUT] global drone subset-LB, |S|=18, rhs=8345, S={1,4,5,7,9,11,12,13,14,15,17,19,22,23,24,25,26,28}
+H    0     0                    8345.0000000 5319.42675  36.3%     -   20s
+
+[MIPSOL] slave-assign master_z=8043, truck=8043, zD_master=8043, |S|=17, UB=8612
+  [SLAVE-CALL] drone=-1, |S|=17, cutoff=8611, S={1,4,5,7,9,12,13,14,15,17,19,22,23,24,25,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=17, cutoff=8611, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=8140, lb=2142, wall_time=5.04884, S={1,4,5,7,9,12,13,14,15,17,19,22,23,24,25,26,28}
+                 chains_size: 4
+                 drone 0 chain: 1 -> 12 -> [SWAP] 26 -> [SWAP] 23
+                 drone 0 swaps_before: 26,23
+                 drone 1 chain: 5 -> 24 -> [SWAP] 19 -> 25 -> 28
+                 drone 1 swaps_before: 19
+                 drone 2 chain: 13 -> [SWAP] 4 -> 7 -> [SWAP] 14
+                 drone 2 swaps_before: 4,14
+                 drone 3 chain: 22 -> [SWAP] 15 -> [SWAP] 9 -> 17
+                 drone 3 swaps_before: 15,9
+                 assigned_count: 17, expected=17
+  [SLAVE-SUMMARY] mode=slave-assign, truck=8043, drone_makespan=8140, accepted_z=8140, submitted_master_z=8140, master_z=8043, current_UB=8612
+
+[NEW BEST] accepted_z=8140, submitted_master_z=8140, truck=8043, drone=8140
+H    0     0                    8043.0000000 5319.42675  33.9%     -   25s
+     0     0 5381.93359    0   47 8043.00000 5381.93359  33.1%     -   25s
+     0     0 5457.52175    0   23 8043.00000 5457.52175  32.1%     -   25s
+     0     0 5478.97562    0   70 8043.00000 5478.97562  31.9%     -   25s
+     0     0 5479.25000    0   71 8043.00000 5479.25000  31.9%     -   25s
+     0     0 5487.77023    0   59 8043.00000 5487.77023  31.8%     -   25s
+     0     0 5564.55205    0   76 8043.00000 5564.55205  30.8%     -   25s
+     0     0 5565.23349    0   42 8043.00000 5565.23349  30.8%     -   25s
+     0     0 5631.69449    0   64 8043.00000 5631.69449  30.0%     -   25s
+     0     0 5645.02908    0   71 8043.00000 5645.02908  29.8%     -   25s
+     0     0 5649.81907    0   68 8043.00000 5649.81907  29.8%     -   25s
+     0     0 5650.26361    0   67 8043.00000 5650.26361  29.7%     -   25s
+     0     0 5691.90344    0   16 8043.00000 5691.90344  29.2%     -   25s
+     0     0 5698.42004    0   41 8043.00000 5698.42004  29.2%     -   25s
+     0     0 5758.22506    0   69 8043.00000 5758.22506  28.4%     -   25s
+     0     0 5765.96688    0   77 8043.00000 5765.96688  28.3%     -   25s
+     0     0 5766.62842    0   78 8043.00000 5766.62842  28.3%     -   25s
+     0     0 5779.37585    0   76 8043.00000 5779.37585  28.1%     -   25s
+     0     0 5779.37585    0   76 8043.00000 5779.37585  28.1%     -   25s
+     0     0 5779.37585    0   67 8043.00000 5779.37585  28.1%     -   25s
+     0     2 5780.43032    0   67 8043.00000 5780.43032  28.1%     -   25s
+
+[MIPSOL] slave-assign master_z=7112, truck=7112, zD_master=7112, |S|=16, UB=8140
+  [SLAVE-CALL] drone=-1, |S|=16, cutoff=8139, S={4,5,7,9,11,12,14,15,18,19,20,22,23,24,29,30}
+  [SLAVE-RESULT] drone=-1, |S|=16, cutoff=8139, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=7290, lb=2142, wall_time=5.06486, S={4,5,7,9,11,12,14,15,18,19,20,22,23,24,29,30}
+                 chains_size: 4
+                 drone 0 chain: 4 -> [SWAP] 23 -> 30 -> [SWAP] 20
+                 drone 0 swaps_before: 23,20
+                 drone 1 chain: 7 -> 14 -> [SWAP] 11 -> 22
+                 drone 1 swaps_before: 11
+                 drone 2 chain: 9 -> 18 -> [SWAP] 12 -> 19
+                 drone 2 swaps_before: 12
+                 drone 3 chain: 15 -> 29 -> [SWAP] 5 -> 24
+                 drone 3 swaps_before: 5
+                 assigned_count: 16, expected=16
+  [SLAVE-SUMMARY] mode=slave-assign, truck=7112, drone_makespan=7290, accepted_z=7290, submitted_master_z=7290, master_z=7112, current_UB=8140
+
+[NEW BEST] accepted_z=7290, submitted_master_z=7290, truck=7112, drone=7290
+H  304   342                    7112.0000000 5936.32052  16.5%  17.5   31s
+
+[MIPSOL] slave-assign master_z=7104, truck=7104, zD_master=7104, |S|=15, UB=7290
+  [SLAVE-CALL] drone=-1, |S|=15, cutoff=7289, S={1,4,5,7,9,14,15,18,19,22,23,24,25,28,29}
+  [SLAVE-RESULT] drone=-1, |S|=15, cutoff=7289, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=6630, lb=2142, wall_time=5.00205, S={1,4,5,7,9,14,15,18,19,22,23,24,25,28,29}
+                 chains_size: 4
+                 drone 0 chain: 1 -> 7 -> 25 -> [SWAP] 19
+                 drone 0 swaps_before: 19
+                 drone 1 chain: 5 -> 24 -> [SWAP] 15
+                 drone 1 swaps_before: 15
+                 drone 2 chain: 9 -> 14 -> [SWAP] 4 -> 29
+                 drone 2 swaps_before: 4
+                 drone 3 chain: 18 -> 22 -> [SWAP] 23 -> 28
+                 drone 3 swaps_before: 23
+                 assigned_count: 15, expected=15
+  [SLAVE-SUMMARY] mode=slave-assign, truck=7104, drone_makespan=6630, accepted_z=7104, submitted_master_z=7104, master_z=7104, current_UB=7290
+
+[NEW BEST] accepted_z=7104, submitted_master_z=7104, truck=7104, drone=6630
+H  428   433                    7104.0000000 5944.00000  16.3%  16.6   36s
+
+[MIPSOL] slave-assign master_z=7103, truck=7103, zD_master=7103, |S|=15, UB=7104
+  [SLAVE-CALL] drone=-1, |S|=15, cutoff=7103, S={1,4,5,6,7,9,11,12,14,15,19,22,23,24,28}
+  [SLAVE-RESULT] drone=-1, |S|=15, cutoff=7103, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=6978, lb=2142, wall_time=5.00246, S={1,4,5,6,7,9,11,12,14,15,19,22,23,24,28}
+                 chains_size: 4
+                 drone 0 chain: 1 -> [SWAP] 15 -> [SWAP] 23
+                 drone 0 swaps_before: 15,23
+                 drone 1 chain: 9 -> [SWAP] 6 -> [SWAP] 5 -> 24
+                 drone 1 swaps_before: 6,5
+                 drone 2 chain: 19 -> [SWAP] 7 -> 11 -> 12
+                 drone 2 swaps_before: 7
+                 drone 3 chain: 28 -> [SWAP] 14 -> 22 -> [SWAP] 4
+                 drone 3 swaps_before: 14,4
+                 assigned_count: 15, expected=15
+  [SLAVE-SUMMARY] mode=slave-assign, truck=7103, drone_makespan=6978, accepted_z=7103, submitted_master_z=7103, master_z=7103, current_UB=7104
+
+[NEW BEST] accepted_z=7103, submitted_master_z=7103, truck=7103, drone=6978
+H  879   895                    7103.0000000 6036.29435  15.0%  18.3   41s
+
+[MIPSOL] slave-assign master_z=7102, truck=7102, zD_master=7102, |S|=16, UB=7103
+  [SLAVE-CALL] drone=-1, |S|=16, cutoff=7102, S={1,4,5,6,7,9,11,14,15,17,18,19,22,23,24,28}
+  [SLAVE-RESULT] drone=-1, |S|=16, cutoff=7102, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=6970, wall_time=5.0023, S={1,4,5,6,7,9,11,14,15,17,18,19,22,23,24,28}
+[CUT] global drone subset-LB, |S|=16, rhs=6970, S={1,4,5,6,7,9,11,14,15,17,18,19,22,23,24,28}
+H 1049  1051                    7102.0000000 6059.03950  14.7%  17.9   46s
+
+[MIPSOL] slave-assign master_z=7077, truck=7077, zD_master=7077, |S|=16, UB=7103
+  [SLAVE-CALL] drone=-1, |S|=16, cutoff=7102, S={1,4,6,7,11,14,15,17,18,19,20,22,24,25,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=16, cutoff=7102, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=6867, wall_time=5.003, S={1,4,6,7,11,14,15,17,18,19,20,22,24,25,26,28}
+[CUT] global drone subset-LB, |S|=16, rhs=6867, S={1,4,6,7,11,14,15,17,18,19,20,22,24,25,26,28}
+H 2761  2287                    7077.0000000 6141.09277  13.2%  18.6   53s
+
+[MIPSOL] slave-assign master_z=7076, truck=7076, zD_master=7076, |S|=17, UB=7103
+  [SLAVE-CALL] drone=-1, |S|=17, cutoff=7102, S={1,4,5,6,7,9,11,14,15,17,18,19,22,24,25,28,30}
+  [SLAVE-RESULT] drone=-1, |S|=17, cutoff=7102, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=6957, wall_time=5.04346, S={1,4,5,6,7,9,11,14,15,17,18,19,22,24,25,28,30}
+[CUT] global drone subset-LB, |S|=17, rhs=6957, S={1,4,5,6,7,9,11,14,15,17,18,19,22,24,25,28,30}
+H 2962  2323                    7076.0000000 6169.48792  12.8%  19.3   58s
+  4454  2800 6321.69865   65   57 7076.00000 6321.69865  10.7%  23.7   60s
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.922, rhs=1, H={4,23,24,18,9,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.961833, rhs=1, H={26,4,24,18,19,22,8,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9015, rhs=1, H={26,4,14,12,18,20,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.884, rhs=1, H={4,24,14,12,18,9,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.819, rhs=1, H={4,24,14,12,18,9,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.856, rhs=1, H={4,23,14,12,18,9,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.983, rhs=1, H={26,4,14,12,18,9,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.97, rhs=1, H={4,15,18,17,20,8,19,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.969, rhs=1, H={4,23,14,12,18,8,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.96, rhs=1, H={4,23,14,12,18,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9195, rhs=1, H={26,4,14,12,18,19,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.879, rhs=1, H={4,15,24,18,20,19,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.717, rhs=1, H={4,15,24,18,20,19,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.922, rhs=1, H={4,23,24,18,9,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=2, lhs=1.9665, rhs=2, H={26,4,15,23,24,18,17,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=2, lhs=1.93, rhs=2, H={26,4,15,23,24,18,17,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=2, lhs=1.8565, rhs=2, H={26,4,15,23,24,18,17,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.841, rhs=1, H={4,23,14,12,18,17,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.869, rhs=1, H={4,24,14,12,18,17,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.804, rhs=1, H={4,24,14,12,18,17,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9345, rhs=1, H={4,23,24,12,18,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9285, rhs=1, H={4,23,24,18,17,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9025, rhs=1, H={26,4,24,18,1,19,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.944, rhs=1, H={4,15,12,18,20,8,19,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.742, rhs=1, H={4,23,14,12,18,8,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.998, rhs=1, H={4,15,23,18,9,22,11,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.8205, rhs=1, H={26,4,18,17,20,1,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.986, rhs=1, H={4,15,24,18,8,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.96775, rhs=1, H={26,4,15,14,8,22,16,11}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.966, rhs=1, H={4,15,12,18,20,9,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.931, rhs=1, H={26,4,15,18,8,19,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.998, rhs=1, H={4,15,23,14,9,8,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.861, rhs=1, H={4,15,23,18,8,19,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.891, rhs=1, H={4,23,24,18,9,8,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.951, rhs=1, H={4,15,12,18,17,20,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.8795, rhs=1, H={4,15,24,14,8,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.964, rhs=1, H={4,15,24,14,1,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.8325, rhs=1, H={4,15,24,14,8,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.6375, rhs=1, H={4,23,24,18,9,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.804, rhs=1, H={4,15,12,18,20,9,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.88, rhs=1, H={26,4,24,18,20,22,5,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.88, rhs=1, H={26,4,24,18,20,22,5,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9335, rhs=1, H={4,15,24,14,9,8,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.992, rhs=1, H={4,15,14,20,13,9,8,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.935, rhs=1, H={4,15,14,20,13,9,19,22}
+ 12839  2767 6932.00000   27    1 7076.00000 6932.00000  2.04%  18.6   65s
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9855, rhs=1, H={4,15,14,20,13,19,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.868, rhs=1, H={4,15,14,20,13,19,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.8225, rhs=1, H={4,15,14,20,13,19,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.834, rhs=1, H={4,15,14,20,13,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9355, rhs=1, H={26,4,23,18,1,19,22,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.913, rhs=1, H={26,4,24,18,9,1,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9475, rhs=1, H={4,15,23,14,8,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.890333, rhs=1, H={4,15,23,14,1,22,16,11}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.973, rhs=1, H={4,15,23,14,9,1,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9345, rhs=1, H={26,4,24,18,8,1,19,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9105, rhs=1, H={26,4,12,18,17,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.977, rhs=1, H={26,4,23,18,1,22,5,25}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9215, rhs=1, H={4,15,24,14,8,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.916, rhs=1, H={4,15,14,18,20,19,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.824, rhs=1, H={4,15,23,14,8,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.957, rhs=1, H={4,15,23,14,13,19,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9615, rhs=1, H={4,15,14,18,9,19,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.876, rhs=1, H={26,4,18,17,9,1,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9445, rhs=1, H={4,15,24,14,8,1,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.949, rhs=1, H={4,15,14,20,13,1,19,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.888, rhs=1, H={4,15,24,14,9,8,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9385, rhs=1, H={4,15,14,12,13,22,5,16}
+ 18218  5161 6992.00000   27    - 7076.00000 6987.00000  1.26%  16.6   70s
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9635, rhs=1, H={4,15,14,17,13,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9295, rhs=1, H={4,15,14,18,13,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9, rhs=1, H={4,15,14,20,13,1,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.977, rhs=1, H={4,15,23,14,8,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.977, rhs=1, H={4,15,23,14,8,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.977, rhs=1, H={4,15,23,14,8,19,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.816, rhs=1, H={4,15,14,13,9,1,22,5}
+ 21880  6708 7000.00000   27    8 7076.00000 7000.00000  1.07%  15.5   76s
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.981, rhs=1, H={4,15,12,18,17,8,22,5}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9685, rhs=1, H={4,15,14,18,13,1,19,22}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.938, rhs=1, H={4,15,24,14,20,8,22,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.787, rhs=1, H={4,15,24,14,8,22,5,16}
+ 23869  7195 7002.00000   28   24 7076.00000 7002.00000  1.05%  15.1   80s
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9325, rhs=1, H={4,15,14,17,13,22,5,16}
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.74, rhs=1, H={4,15,14,17,8,1,22,5}
+ 26026  7248     cutoff   28      7076.00000 7013.00000  0.89%  14.8   87s
+ 27446  7189 7046.00000   29   25 7076.00000 7016.00000  0.85%  14.5   91s
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.9875, rhs=1, H={4,15,14,18,17,1,22,5}
+ 29274  6894     cutoff   30      7076.00000 7021.00000  0.78%  14.3   96s
+ 31414  6595 7031.00000   31    1 7076.00000 7030.00000  0.65%  13.9  100s
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.973, rhs=1, H={4,15,14,17,13,19,22,11}
+ 33132  6009 infeasible   31      7076.00000 7036.00000  0.57%  13.6  106s
+[GAP-1PCT] time=106.434, valid_ub=7103, master_lb=7036, gap=0.943263%
+ 34471  5766 7050.00000   24   30 7076.00000 7040.00000  0.51%  13.4  110s
+[USERCUT] slave-assign energy cover, |H|=8, R=1, lhs=0.973, rhs=1, H={4,15,14,17,13,19,22,11}
+ 36647  5072     cutoff   27      7076.00000 7045.00000  0.44%  13.0  115s
+ 38976  4242 infeasible   35      7076.00000 7052.00000  0.34%  12.7  123s
+ 40903  4250 7053.00000   28   28 7076.00000 7053.00000  0.33%  12.3  128s
+ 42350  4165 7067.50000   29   34 7076.00000 7053.00000  0.33%  12.1  130s
+ 43800  3199 infeasible   28      7076.00000 7060.00000  0.23%  11.9  137s
+ 44834  2644 infeasible   33      7076.00000 7063.50000  0.18%  11.8  140s
+ 46883  1478     cutoff   28      7076.00000 7068.00000  0.11%  11.6  145s
+ 48693   339 7073.00000   29    - 7076.00000 7073.00000  0.04%  11.3  150s
+
+[MIPSOL] slave-assign master_z=7075, truck=7075, zD_master=7075, |S|=17, UB=7103
+  [SLAVE-CALL] drone=-1, |S|=17, cutoff=7102, S={1,4,5,6,7,9,13,14,15,17,18,19,22,23,25,28,30}
+  [SLAVE-RESULT] drone=-1, |S|=17, cutoff=7102, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=7011, wall_time=5.00263, S={1,4,5,6,7,9,13,14,15,17,18,19,22,23,25,28,30}
+[CUT] global drone subset-LB, |S|=17, rhs=7011, S={1,4,5,6,7,9,13,14,15,17,18,19,22,23,25,28,30}
+*48789   153              30    7075.0000000 7074.83223  0.00%  11.3  155s
+
+Cutting planes:
+  User: 550
+  Gomory: 24
+  Clique: 1
+  Flow cover: 10
+  Zero half: 36
+  Lazy constraints: 3783
+
+Explored 48935 nodes (554041 simplex iterations) in 155.83 seconds (28.71 work units)
+Thread count was 20 (of 20 available processors)
+
+Solution count 10: 7075 7076 7077 ... 8386
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 7.075000000000e+03, best bound 7.075000000000e+03, gap 0.0000%
+
+User-callback calls 112852, time in user-callback 63.51 sec
+
+=== Exact decomposition finished ===
+Best valid UB: 7103
+[EXPORT] result_file = ./results/results_30_sec_hybrid_cp_explicit.csv
+[EXPORT] best.feasible = 1, best.objective = 7103
+
+=== Final best solution ===
+feasible: 1
+objective: 7103.000000
+truck_value: 7103.000000
+drone_value: 6978.000000
+final_makespan: 7103.000000
+
+truck_customers (15): 2 3 8 10 13 16 17 18 20 21 25 26 27 29 30
+drone_customers (15): 1 4 5 6 7 9 11 12 14 15 19 22 23 24 28
+
+truck_route:
+  0 -> 27 -> 29 -> 30 -> 20 -> 21 -> 3 -> 26 -> 25 -> 13 -> 10 -> 2 -> 17 -> 18 -> 8 -> 16 -> 31
+
+per_drone_customers:
+  drone 0: 1 15 23
+  drone 1: 9 6 5 24
+  drone 2: 19 7 11 12
+  drone 3: 28 14 22 4
+
+drone_chains:
+  drone 0: 1 [SWAP] 15 [SWAP] 23
+  drone 1: 9 [SWAP] 6 [SWAP] 5 24
+  drone 2: 19 [SWAP] 7 11 12
+  drone 3: 28 [SWAP] 14 22 [SWAP] 4
+
+=== Solve statistics ===
+gurobi_status: 2
+master_obj: 7075.000000
+lower_bound: 7075.000000
+mip_gap: 0.000000
+runtime_sec: 155.850094
+initial_valid_ub: 10874.000000
+best_valid_ub: 7103.000000
+best_master_lb_seen: 7075.000000
+final_valid_gap: 0.003942
+final_valid_gap_percent: 0.394200
+time_to_best_solution_sec: 41.280742
+time_to_1pct_gap_sec: 106.434338
+first_1pct_gap_value: 0.009433
+first_1pct_gap_percent: 0.943263
+first_1pct_gap_bound: 7036.000000
+valid_incumbent_updates: 6
+===========================

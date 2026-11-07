@@ -1,0 +1,50 @@
+
+=== Dataset parameters ===
+instance: data/instances/legacy_toy_6.txt
+n_customers: 30
+n_drones: 2
+swap_time_min: 3.000000
+battery_capacity: 1000
+drone_cap: 2.270000
+truck_speed: 30.000000
+drone_speed: 40.000000
+
+=== Best solution summary ===
+feasible: 1
+best_upper_bound: inf
+best_lower_bound: -1.000000
+final_gap: -1.000000
+final_gap_percent: -1.000000
+truck_value: 7214.000000
+drone_value: 7162.000000
+final_makespan: 7214.000000
+initial_solution: inf
+time_to_best_solution_sec: -1.000000
+runtime_sec: -1.000000
+valid_incumbent_updates: 0
+
+=== Customer assignment ===
+num_truck_customers: 13
+num_drone_customers: 17
+truck_customers: 2 26 29 11 1 13 10 14 6 5 20 23 3
+drone_customers: 7 9 15 16 17 18 21 22 25 27 30 28 12 24 19 8 4
+
+=== Routes ===
+truck_route: 0 -> 2 -> 26 -> 29 -> 11 -> 1 -> 13 -> 10 -> 14 -> 6 -> 5 -> 20 -> 23 -> 3 -> 31
+drone_routes: Drone 0: 0 -> 7 -> 0 | 0 -> 30 -> 0 | [SWAP] 0 -> 16 -> 0 | 0 -> 28 -> 0 || Drone 1: 0 -> 4 -> 0 | [SWAP] 0 -> 8 -> 0 | 0 -> 22 -> 0 | [SWAP] 0 -> 21 -> 0
+
+per_drone_customers:
+  drone 0: 7 16 25 18 27 30 28 12
+  drone 1: 15 22 9 17 21 24 19 8 4
+
+=== Solver diagnostics ===
+gurobi_status: -1
+gurobi_master_obj: -1.000000
+gurobi_final_master_lb: -1.000000
+best_tracked_master_lb: -inf
+gurobi_master_gap: -1.000000
+time_to_1pct_gap_sec: -1.000000
+first_1pct_gap_value: -1.000000
+first_1pct_gap_percent: -1.000000
+first_1pct_gap_bound: -1.000000
+===========================

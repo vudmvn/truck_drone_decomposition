@@ -1,0 +1,320 @@
+Loaded instance: ./data/instances/30-r-1-c-swap-5.txt
+  customers      : 30
+  drone feasible : 26
+  drones         : 4
+  swap time      : 300 seconds
+  battery cap    : 1000
+  drone endurance: 2160 seconds
+  drone time lim.: 5400 seconds
+[SOLVE] exact decomposition master, instance=./data/instances/30-r-1-c-swap-5.txt, n=30, drones=4, slave=cp
+[INIT] all-truck valid UB=13444
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2715477
+Academic license 2715477 - for non-commercial use only - registered to 11___@st.neu.edu.vn
+Set parameter LazyConstraints to value 1
+Set parameter PreCrush to value 1
+Set parameter MIPFocus to value 3
+Set parameter Cuts to value 2
+Set parameter TimeLimit to value 3600
+[MASTER] truck subtour mode=sec; MTZ constraints disabled, lazy SEC enabled
+[SLAVE] requested=cp, actual=k-drone-ordering-cpsat
+Gurobi Optimizer version 13.0.1 build v13.0.1rc0 (linux64 - "Debian GNU/Linux 12 (bookworm)")
+
+CPU model: 13th Gen Intel(R) Core(TM) i5-13500, instruction set [SSE2|AVX|AVX2]
+Thread count: 20 physical cores, 20 logical processors, using up to 20 threads
+
+Non-default parameters:
+TimeLimit  3600
+MIPFocus  3
+Cuts  2
+PreCrush  1
+LazyConstraints  1
+
+Academic license 2715477 - for non-commercial use only - registered to 11___@st.neu.edu.vn
+Optimize a model with 158 rows, 995 columns and 3130 nonzeros (Min)
+Model fingerprint: 0xb287466e
+Model has 1 linear objective coefficients
+Variable types: 3 continuous, 992 integer (991 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 4e+03]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+04]
+  RHS range        [1e+00, 4e+03]
+
+Using variable hints.
+Using branch priorities.
+Presolve removed 56 rows and 34 columns
+Presolve time: 0.01s
+Presolved: 102 rows, 961 columns, 2966 nonzeros
+Variable types: 3 continuous, 958 integer (957 binary)
+Root relaxation presolved: 113 rows, 961 columns, 3005 nonzeros
+
+
+Use crossover to convert LP symmetric solution to basic solution...
+Crossover time: 0.00 seconds (0.00 work units)
+
+Root relaxation: objective 3.859048e+03, 116 iterations, 0.00 seconds (0.00 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0 3859.04778    0   12          - 3859.04778      -     -    0s
+
+[MIPSOL] slave-assign master_z=7106.5, truck=6978, zD_master=7106.5, |S|=22, UB=13444
+  [SLAVE-CALL] drone=-1, |S|=22, cutoff=13443, S={2,3,4,5,6,8,11,12,13,14,15,16,17,18,19,21,23,24,25,26,28,29}
+  [SLAVE-RESULT] drone=-1, |S|=22, cutoff=13443, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=7406, lb=2160, wall_time=5.00366, S={2,3,4,5,6,8,11,12,13,14,15,16,17,18,19,21,23,24,25,26,28,29}
+                 chains_size: 4
+                 drone 0 chain: 2 -> 14 -> 15 -> [SWAP] 4 -> 25 -> [SWAP] 16
+                 drone 0 swaps_before: 4,16
+                 drone 1 chain: 3 -> 5 -> 19 -> [SWAP] 6 -> 11 -> 24
+                 drone 1 swaps_before: 6
+                 drone 2 chain: 12 -> 13 -> 26 -> 29 -> [SWAP] 17 -> 18
+                 drone 2 swaps_before: 17
+                 drone 3 chain: 21 -> 23 -> 28 -> [SWAP] 8
+                 drone 3 swaps_before: 8
+                 assigned_count: 22, expected=22
+  [SLAVE-SUMMARY] mode=slave-assign, truck=6978, drone_makespan=7406, accepted_z=7406, submitted_master_z=7406, master_z=7106.5, current_UB=13444
+
+[NEW BEST] accepted_z=7406, submitted_master_z=7406, truck=6978, drone=7406
+H    0     0                    7106.5000000 3859.04778  45.7%     -    5s
+
+[MIPSOL] slave-assign master_z=6909, truck=6863, zD_master=6909, |S|=21, UB=7406
+  [SLAVE-CALL] drone=-1, |S|=21, cutoff=7405, S={3,4,5,6,8,11,12,13,14,15,16,17,18,19,21,23,24,25,26,28,29}
+  [SLAVE-RESULT] drone=-1, |S|=21, cutoff=7405, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=7098, lb=2160, wall_time=5.06237, S={3,4,5,6,8,11,12,13,14,15,16,17,18,19,21,23,24,25,26,28,29}
+                 chains_size: 4
+                 drone 0 chain: 3 -> 24 -> 26 -> [SWAP] 4 -> 21
+                 drone 0 swaps_before: 4
+                 drone 1 chain: 5 -> 8 -> 15 -> [SWAP] 19 -> 25
+                 drone 1 swaps_before: 19
+                 drone 2 chain: 11 -> 23 -> 28 -> [SWAP] 14 -> 18
+                 drone 2 swaps_before: 14
+                 drone 3 chain: 12 -> 13 -> [SWAP] 6 -> 16 -> 17 -> 29
+                 drone 3 swaps_before: 6
+                 assigned_count: 21, expected=21
+  [SLAVE-SUMMARY] mode=slave-assign, truck=6863, drone_makespan=7098, accepted_z=7098, submitted_master_z=7098, master_z=6909, current_UB=7406
+
+[NEW BEST] accepted_z=7098, submitted_master_z=7098, truck=6863, drone=7098
+H    0     0                    6909.0000000 3859.04778  44.1%     -   10s
+
+[MIPSOL] slave-assign master_z=6863, truck=6863, zD_master=6863, |S|=20, UB=7098
+  [SLAVE-CALL] drone=-1, |S|=20, cutoff=7097, S={3,4,5,6,8,11,12,13,14,15,16,17,18,19,21,23,25,26,28,29}
+  [SLAVE-RESULT] drone=-1, |S|=20, cutoff=7097, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=6836, lb=2160, wall_time=5.00165, S={3,4,5,6,8,11,12,13,14,15,16,17,18,19,21,23,25,26,28,29}
+                 chains_size: 4
+                 drone 0 chain: 3 -> 12 -> 17 -> 18 -> 23 -> 28
+                 drone 0 swaps_before: none
+                 drone 1 chain: 4 -> 11 -> 15 -> [SWAP] 8 -> 14
+                 drone 1 swaps_before: 8
+                 drone 2 chain: 5 -> 26 -> [SWAP] 13 -> 21 -> 29
+                 drone 2 swaps_before: 13
+                 drone 3 chain: 16 -> 25 -> [SWAP] 6 -> 19
+                 drone 3 swaps_before: 6
+                 assigned_count: 20, expected=20
+  [SLAVE-SUMMARY] mode=slave-assign, truck=6863, drone_makespan=6836, accepted_z=6863, submitted_master_z=6863, master_z=6863, current_UB=7098
+
+[NEW BEST] accepted_z=6863, submitted_master_z=6863, truck=6863, drone=6836
+H    0     0                    6863.0000000 3859.04778  43.8%     -   15s
+     0     0 4339.33521    0   27 6863.00000 4339.33521  36.8%     -   15s
+     0     0 4712.24656    0   38 6863.00000 4712.24656  31.3%     -   15s
+     0     0 4786.73271    0   45 6863.00000 4786.73271  30.3%     -   15s
+     0     0 4897.17412    0   45 6863.00000 4897.17412  28.6%     -   15s
+     0     0 4995.68789    0   10 6863.00000 4995.68789  27.2%     -   15s
+
+[MIPSOL] slave-assign master_z=5564.5, truck=5223, zD_master=5564.5, |S|=18, UB=6863
+  [SLAVE-CALL] drone=-1, |S|=18, cutoff=6862, S={1,3,6,8,9,11,12,13,14,15,16,17,18,19,21,22,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=18, cutoff=6862, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=5808, lb=2160, wall_time=5.00348, S={1,3,6,8,9,11,12,13,14,15,16,17,18,19,21,22,26,28}
+                 chains_size: 4
+                 drone 0 chain: 1 -> 15 -> 16 -> 18 -> 28
+                 drone 0 swaps_before: none
+                 drone 1 chain: 6 -> 26 -> [SWAP] 19
+                 drone 1 swaps_before: 19
+                 drone 2 chain: 8 -> 12 -> 13 -> [SWAP] 9 -> 17
+                 drone 2 swaps_before: 9
+                 drone 3 chain: 14 -> 22 -> [SWAP] 3 -> 11 -> 21
+                 drone 3 swaps_before: 3
+                 assigned_count: 18, expected=18
+  [SLAVE-SUMMARY] mode=slave-assign, truck=5223, drone_makespan=5808, accepted_z=5808, submitted_master_z=5808, master_z=5564.5, current_UB=6863
+
+[NEW BEST] accepted_z=5808, submitted_master_z=5808, truck=5223, drone=5808
+H    0     0                    5564.5000000 4999.63944  10.2%     -   20s
+
+[MIPSOL] slave-assign master_z=5532.5, truck=5410, zD_master=5532.5, |S|=17, UB=5808
+  [SLAVE-CALL] drone=-1, |S|=17, cutoff=5807, S={1,6,8,9,11,12,13,14,15,16,17,18,19,21,22,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=17, cutoff=5807, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=5660, lb=2160, wall_time=5.00225, S={1,6,8,9,11,12,13,14,15,16,17,18,19,21,22,26,28}
+                 chains_size: 4
+                 drone 0 chain: 1 -> 26 -> [SWAP] 8 -> 12
+                 drone 0 swaps_before: 8
+                 drone 1 chain: 6 -> 11 -> 16 -> 28
+                 drone 1 swaps_before: none
+                 drone 2 chain: 9 -> 15 -> 17 -> 18 -> 22
+                 drone 2 swaps_before: none
+                 drone 3 chain: 13 -> 14 -> 21 -> [SWAP] 19
+                 drone 3 swaps_before: 19
+                 assigned_count: 17, expected=17
+  [SLAVE-SUMMARY] mode=slave-assign, truck=5410, drone_makespan=5660, accepted_z=5660, submitted_master_z=5660, master_z=5532.5, current_UB=5808
+
+[NEW BEST] accepted_z=5660, submitted_master_z=5660, truck=5410, drone=5660
+H    0     0                    5532.5000000 4999.63944  9.63%     -   25s
+
+[MIPSOL] slave-assign master_z=5522, truck=5381, zD_master=5522, |S|=17, UB=5660
+  [SLAVE-CALL] drone=-1, |S|=17, cutoff=5659, S={1,3,6,8,9,11,13,14,15,16,17,18,19,21,22,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=17, cutoff=5659, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=5522, wall_time=5.00252, S={1,3,6,8,9,11,13,14,15,16,17,18,19,21,22,26,28}
+[CUT] global drone subset-LB, |S|=17, rhs=5522, S={1,3,6,8,9,11,13,14,15,16,17,18,19,21,22,26,28}
+H    0     0                    5522.0000000 4999.63944  9.46%     -   30s
+
+[MIPSOL] slave-assign master_z=5496, truck=5223, zD_master=5496, |S|=17, UB=5660
+  [SLAVE-CALL] drone=-1, |S|=17, cutoff=5659, S={1,3,6,8,9,11,12,14,15,16,17,18,19,21,22,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=17, cutoff=5659, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=5496, wall_time=5.00244, S={1,3,6,8,9,11,12,14,15,16,17,18,19,21,22,26,28}
+[CUT] global drone subset-LB, |S|=17, rhs=5496, S={1,3,6,8,9,11,12,14,15,16,17,18,19,21,22,26,28}
+H    0     0                    5496.0000000 4999.63944  9.03%     -   35s
+     0     0 5027.02043    0   68 5496.00000 5027.02043  8.53%     -   35s
+     0     0 5049.18987    0   52 5496.00000 5049.18987  8.13%     -   35s
+     0     0 5062.42699    0   27 5496.00000 5062.42699  7.89%     -   35s
+     0     0 5062.42699    0   48 5496.00000 5062.42699  7.89%     -   35s
+     0     0 5062.42699    0   69 5496.00000 5062.42699  7.89%     -   35s
+     0     0 5064.01206    0   74 5496.00000 5064.01206  7.86%     -   35s
+     0     0 5066.69235    0   65 5496.00000 5066.69235  7.81%     -   35s
+     0     0 5081.34903    0   74 5496.00000 5081.34903  7.54%     -   35s
+
+[MIPSOL] slave-assign master_z=5453.5, truck=5381, zD_master=5453.5, |S|=16, UB=5660
+  [SLAVE-CALL] drone=-1, |S|=16, cutoff=5659, S={1,3,6,8,9,11,14,15,16,17,18,19,21,22,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=16, cutoff=5659, feasible=0, optimal=0, proven_infeasible=0, unknown=1, obj=N/A, lb=5454, wall_time=4.98732, S={1,3,6,8,9,11,14,15,16,17,18,19,21,22,26,28}
+[CUT] global drone subset-LB, |S|=16, rhs=5454, S={1,3,6,8,9,11,14,15,16,17,18,19,21,22,26,28}
+     0     0 5082.22068    0   63 5496.00000 5082.22068  7.53%     -   40s
+     0     0 5092.54601    0   91 5496.00000 5092.54601  7.34%     -   40s
+     0     0 5093.19106    0   77 5496.00000 5093.19106  7.33%     -   40s
+     0     0 5093.98114    0   95 5496.00000 5093.98114  7.31%     -   40s
+     0     0 5094.05440    0   95 5496.00000 5094.05440  7.31%     -   40s
+     0     0 5094.05440    0   87 5496.00000 5094.05440  7.31%     -   40s
+
+[MIPSOL] slave-assign master_z=5421.5, truck=5401, zD_master=5421.5, |S|=15, UB=5660
+  [SLAVE-CALL] drone=-1, |S|=15, cutoff=5659, S={1,6,8,9,11,14,15,16,17,18,19,21,22,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=15, cutoff=5659, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=5642, lb=2160, wall_time=5.0018, S={1,6,8,9,11,14,15,16,17,18,19,21,22,26,28}
+                 chains_size: 4
+                 drone 0 chain: 1 -> 15 -> 26 -> [SWAP] 21
+                 drone 0 swaps_before: 21
+                 drone 1 chain: 6 -> 17 -> [SWAP] 19
+                 drone 1 swaps_before: 19
+                 drone 2 chain: 8 -> [SWAP] 16 -> 18
+                 drone 2 swaps_before: 16
+                 drone 3 chain: 9 -> 11 -> 14 -> 22 -> 28
+                 drone 3 swaps_before: none
+                 assigned_count: 15, expected=15
+  [SLAVE-SUMMARY] mode=slave-assign, truck=5401, drone_makespan=5642, accepted_z=5642, submitted_master_z=5642, master_z=5421.5, current_UB=5660
+
+[NEW BEST] accepted_z=5642, submitted_master_z=5642, truck=5401, drone=5642
+H    0     0                    5421.5000000 5094.05440  6.04%     -   45s
+     0     0 5094.10555    0   33 5421.50000 5094.10555  6.04%     -   45s
+     0     0 5094.10555    0   69 5421.50000 5094.10555  6.04%     -   45s
+     0     0 5094.10555    0   54 5421.50000 5094.10555  6.04%     -   45s
+     0     0 5094.10555    0   74 5421.50000 5094.10555  6.04%     -   45s
+     0     0 5103.76951    0   78 5421.50000 5103.76951  5.86%     -   45s
+     0     0 5103.81290    0   78 5421.50000 5103.81290  5.86%     -   45s
+     0     0 5128.27147    0   70 5421.50000 5128.27147  5.41%     -   45s
+     0     0 5136.57960    0   66 5421.50000 5136.57960  5.26%     -   45s
+     0     0 5136.98362    0   67 5421.50000 5136.98362  5.25%     -   45s
+     0     0 5143.99065    0   67 5421.50000 5143.99065  5.12%     -   45s
+     0     0 5146.33185    0   57 5421.50000 5146.33185  5.08%     -   45s
+     0     0 5146.54969    0   74 5421.50000 5146.54969  5.07%     -   45s
+     0     0 5146.77360    0   74 5421.50000 5146.77360  5.07%     -   45s
+     0     0 5146.77360    0   67 5421.50000 5146.77360  5.07%     -   45s
+     0     0 5146.81638    0   33 5421.50000 5146.81638  5.07%     -   46s
+     0     0 5146.81638    0   35 5421.50000 5146.81638  5.07%     -   46s
+     0     0 5146.81638    0   69 5421.50000 5146.81638  5.07%     -   46s
+     0     0 5146.81638    0   64 5421.50000 5146.81638  5.07%     -   46s
+     0     0 5146.81638    0   75 5421.50000 5146.81638  5.07%     -   46s
+     0     0 5149.37842    0   61 5421.50000 5149.37842  5.02%     -   46s
+     0     0 5149.80330    0   79 5421.50000 5149.80330  5.01%     -   46s
+     0     0 5149.84638    0   79 5421.50000 5149.84638  5.01%     -   46s
+     0     0 5149.84638    0   73 5421.50000 5149.84638  5.01%     -   46s
+     0     2 5149.85943    0   73 5421.50000 5149.85943  5.01%     -   46s
+
+[MIPSOL] slave-assign master_z=5372, truck=5372, zD_master=5372, |S|=15, UB=5642
+  [SLAVE-CALL] drone=-1, |S|=15, cutoff=5641, S={1,6,8,9,11,12,14,16,17,18,19,21,22,26,28}
+  [SLAVE-RESULT] drone=-1, |S|=15, cutoff=5641, feasible=1, optimal=0, proven_infeasible=0, unknown=0, obj=5476, lb=2160, wall_time=5.00209, S={1,6,8,9,11,12,14,16,17,18,19,21,22,26,28}
+                 chains_size: 4
+                 drone 0 chain: 1 -> 26 -> [SWAP] 8
+                 drone 0 swaps_before: 8
+                 drone 1 chain: 6 -> 9 -> 21 -> 28
+                 drone 1 swaps_before: none
+                 drone 2 chain: 11 -> 12 -> 14 -> 16 -> 18
+                 drone 2 swaps_before: none
+                 drone 3 chain: 17 -> 22 -> [SWAP] 19
+                 drone 3 swaps_before: 19
+                 assigned_count: 15, expected=15
+  [SLAVE-SUMMARY] mode=slave-assign, truck=5372, drone_makespan=5476, accepted_z=5476, submitted_master_z=5476, master_z=5372, current_UB=5642
+
+[NEW BEST] accepted_z=5476, submitted_master_z=5476, truck=5372, drone=5476
+*  215    42              18    5372.0000000 5334.87037  0.69%  27.4   51s
+
+Cutting planes:
+  User: 48
+  Gomory: 16
+  Lift-and-project: 8
+  Cover: 1
+  Clique: 2
+  MIR: 20
+  StrongCG: 8
+  Flow cover: 6
+  Zero half: 112
+  Relax-and-lift: 1
+  Lazy constraints: 24
+
+Explored 237 nodes (8612 simplex iterations) in 51.62 seconds (1.29 work units)
+Thread count was 20 (of 20 available processors)
+
+Solution count 9: 5372 5421.5 5496 ... 7106.5
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 5.372000000000e+03, best bound 5.372000000000e+03, gap 0.0000%
+
+User-callback calls 1655, time in user-callback 50.10 sec
+
+=== Exact decomposition finished ===
+Best valid UB: 5476
+[EXPORT] result_file = ./results/results_30_sec_hybrid_cp_explicit.csv
+[EXPORT] best.feasible = 1, best.objective = 5476
+
+=== Final best solution ===
+feasible: 1
+objective: 5476.000000
+truck_value: 5372.000000
+drone_value: 5476.000000
+final_makespan: 5476.000000
+
+truck_customers (15): 2 3 4 5 7 10 13 15 20 23 24 25 27 29 30
+drone_customers (15): 1 6 8 9 11 12 14 16 17 18 19 21 22 26 28
+
+truck_route:
+  0 -> 13 -> 27 -> 30 -> 20 -> 5 -> 25 -> 23 -> 4 -> 29 -> 7 -> 24 -> 10 -> 2 -> 15 -> 3 -> 31
+
+per_drone_customers:
+  drone 0: 1 26 8
+  drone 1: 6 9 21 28
+  drone 2: 11 12 14 16 18
+  drone 3: 17 22 19
+
+drone_chains:
+  drone 0: 1 26 [SWAP] 8
+  drone 1: 6 9 21 28
+  drone 2: 11 12 14 16 18
+  drone 3: 17 22 [SWAP] 19
+
+=== Solve statistics ===
+gurobi_status: 2
+master_obj: 5372.000000
+lower_bound: 5372.000000
+mip_gap: 0.000000
+runtime_sec: 51.619283
+initial_valid_ub: 13444.000000
+best_valid_ub: 5476.000000
+best_master_lb_seen: 5372.000000
+final_valid_gap: 0.018992
+final_valid_gap_percent: 1.899196
+time_to_best_solution_sec: 51.607708
+time_to_1pct_gap_sec: -1.000000
+first_1pct_gap_value: -1.000000
+first_1pct_gap_percent: -1.000000
+first_1pct_gap_bound: -1.000000
+valid_incumbent_updates: 7
+===========================

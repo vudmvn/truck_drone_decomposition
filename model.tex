@@ -1,0 +1,921 @@
+\documentclass[12pt,a4paper]{article}
+
+% =========================================================
+% Preamble cho pdflatex + tiếng Việt
+% =========================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{left=2.7cm,right=2.2cm,top=2.5cm,bottom=2.5cm}
+
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\newtheorem{definition}{Định nghĩa}
+\newtheorem{proposition}{Mệnh đề}
+\newtheorem{lemma}{Bổ đề}
+\newtheorem{remark}{Nhận xét}
+\newtheorem{corollary}{Hệ quả}
+
+\newcommand{\C}{\mathcal{C}}
+\newcommand{\CD}{\mathcal{C}^{D}}
+\newcommand{\A}{\mathcal{A}}
+\newcommand{\V}{\mathcal{V}}
+\newcommand{\UB}{\mathrm{UB}}
+\newcommand{\LB}{\mathrm{LB}}
+\newcommand{\LBM}{\mathrm{LB}_{\mathrm{master}}}
+\newcommand{\UBV}{\mathrm{UB}_{\mathrm{valid}}}
+\newcommand{\M}{\mathcal{M}}
+\newcommand{\eps}{\varepsilon}
+
+\title{Khung thuật toán MILP Master -- CP Subproblem cho bài toán Truck--Drone với thay pin}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+% =========================================================
+\section{Mô tả bài toán gốc}
+\label{sec:original-problem}
+% =========================================================
+
+Xét bài toán giao hàng gồm một truck và nhiều drone. Tập khách hàng là
+\[
+    \C=\{1,2,\ldots,n\}.
+\]
+Depot xuất phát được ký hiệu là node $0$, và depot kết thúc giả được ký hiệu là node $n+1$.
+Tập node đầy đủ là
+\[
+    \V=\{0\}\cup \C\cup \{n+1\}.
+\]
+
+Mỗi khách hàng phải được phục vụ đúng một lần, hoặc bởi truck, hoặc bởi drone. Truck di chuyển theo một tuyến đường bắt đầu từ depot $0$ và kết thúc tại depot giả $n+1$. Trong mô hình hiện tại, mỗi nhiệm vụ drone là một sortie độc lập dạng
+\[
+    0\rightarrow i\rightarrow 0,
+\]
+nghĩa là drone xuất phát từ depot, phục vụ khách $i$, rồi quay lại depot. Mỗi drone có thể thực hiện nhiều sortie liên tiếp. Ví dụ một chain của drone có thể có dạng
+\[
+    0\to i\to 0\; |\; 0\to j\to 0\; |\; [\mathrm{SWAP}]\;0\to k\to 0.
+\]
+Nếu ký hiệu $[\mathrm{SWAP}]$ xuất hiện trước một sortie, drone phải thay pin trước khi thực hiện sortie đó. Thời gian thay pin là $\tau_{\mathrm{swap}}$.
+
+Gọi $K$ là số drone, $B$ là dung lượng pin. Với mỗi khách hàng $i$, ký hiệu
+\[
+    r_i=\tau^D_{0i}+\tau^D_{i0}
+\]
+là thời gian bay khứ hồi của drone khi phục vụ riêng khách $i$, và $e_i$ là năng lượng cần thiết cho sortie đó. Tập khách hàng có thể phục vụ bằng drone sau tiền xử lý được ký hiệu là $\CD\subseteq \C$.
+
+Mục tiêu của bài toán gốc là cực tiểu hóa makespan tổng thể:
+\begin{equation}
+    \min \max\{T_{\mathrm{truck}},T_{\mathrm{drone}}\},
+    \label{eq:original-objective}
+\end{equation}
+trong đó $T_{\mathrm{truck}}$ là thời gian hoàn thành tuyến truck, còn $T_{\mathrm{drone}}$ là makespan lớn nhất trong các drone chain.
+
+% =========================================================
+\section{Ý tưởng phân rã: MILP master và CP subproblem}
+\label{sec:decomposition}
+% =========================================================
+
+Bài toán gốc được xử lý bằng một khung phân rã gồm hai thành phần:
+\begin{itemize}[leftmargin=2em]
+    \item \textbf{MILP master problem}: quyết định khách nào đi truck, khách nào đi drone, và quyết định tuyến truck.
+    \item \textbf{CP subproblem}: nhận tập khách được gán cho drone và xếp lịch chi tiết cho các drone, bao gồm chia chain, thứ tự phục vụ, thay pin và makespan drone.
+\end{itemize}
+
+Điểm quan trọng là master không mô hình hóa đầy đủ lịch drone. Thay vào đó, master chỉ chứa các cận dưới cho phần drone. Khi master sinh một nghiệm nguyên, CP subproblem được gọi để kiểm tra và sửa nghiệm này. Nếu CP tìm được lịch drone khả thi, ta thu được một nghiệm đầy đủ cho bài toán gốc. Nếu CP chứng minh một số lower bound hoặc infeasibility dưới cutoff, thông tin này được truyền ngược về master qua các cuts.
+
+% =========================================================
+\section{MILP master problem}
+\label{sec:master}
+% =========================================================
+
+\subsection{Biến quyết định}
+
+Với mỗi khách hàng $i\in \C$, định nghĩa biến gán drone:
+\[
+    y_i=\begin{cases}
+    1, & \text{nếu khách }i\text{ được phục vụ bởi drone},\\
+    0, & \text{ngược lại},
+    \end{cases}
+\]
+và biến gán truck:
+\[
+    t_i=\begin{cases}
+    1, & \text{nếu khách }i\text{ được phục vụ bởi truck},\\
+    0, & \text{ngược lại}.
+    \end{cases}
+\]
+
+Với mỗi cung truck hợp lệ $(i,j)\in \A$, định nghĩa
+\[
+    x_{ij}=\begin{cases}
+    1, & \text{nếu truck đi trực tiếp từ }i\text{ đến }j,\\
+    0, & \text{ngược lại}.
+    \end{cases}
+\]
+Tập cung truck hợp lệ là
+\[
+    \A=\{(i,j)\in \V\times \V: i\neq j,\; i\neq n+1,\; j\neq 0\}.
+\]
+
+Master có thêm các biến:
+\[
+    z_T\ge 0,\qquad z_D\ge 0,\qquad z\ge 0,
+\]
+trong đó $z_T$ biểu diễn thời gian truck, $z_D$ biểu diễn cận dưới/đại diện cho makespan drone trong master, còn $z$ là objective của master. Ngoài ra, $q\in\mathbb{Z}_+$ là biến cận dưới cho số lần thay pin.
+
+\subsection{Hàm mục tiêu}
+
+Master tối thiểu hóa
+\begin{equation}
+    \min z.
+    \label{eq:master-obj}
+\end{equation}
+
+\subsection{Ràng buộc gán khách}
+
+Mỗi khách hàng được phục vụ đúng một lần:
+\begin{equation}
+    y_i+t_i=1,\qquad \forall i\in \C.
+    \label{eq:assign}
+\end{equation}
+Nếu khách hàng không drone-feasible, ta fix:
+\begin{equation}
+    y_i=0,\qquad t_i=1,\qquad \forall i\in \C\setminus \CD.
+    \label{eq:not-drone-feasible}
+\end{equation}
+
+\subsection{Ràng buộc tuyến truck}
+
+Truck xuất phát từ depot $0$:
+\begin{equation}
+    \sum_{j:(0,j)\in \A} x_{0j}=1.
+    \label{eq:truck-start}
+\end{equation}
+Truck kết thúc tại depot giả $n+1$:
+\begin{equation}
+    \sum_{i:(i,n+1)\in \A} x_{i,n+1}=1.
+    \label{eq:truck-end}
+\end{equation}
+Nếu khách $i$ được phục vụ bởi truck, truck phải đi vào và đi ra khỏi $i$ đúng một lần:
+\begin{align}
+    \sum_{j:(j,i)\in \A}x_{ji} &= t_i, && \forall i\in \C, \label{eq:truck-in}\\
+    \sum_{j:(i,j)\in \A}x_{ij} &= t_i, && \forall i\in \C. \label{eq:truck-out}
+\end{align}
+
+Thời gian truck được chặn dưới bởi:
+\begin{equation}
+    z_T\ge \sum_{(i,j)\in \A}\tau^T_{ij}x_{ij}.
+    \label{eq:truck-time-master}
+\end{equation}
+
+\subsection{Các cận dưới cho phần drone trong master}
+
+% Cận dưới đơn nhiệm vụ:
+% \begin{equation}
+%     z_D\ge r_i y_i,\qquad \forall i\in \CD.
+%     \label{eq:single-drone-lb}
+% \end{equation}
+
+Cận dưới workload:
+\begin{equation}
+    Kz_D\ge \sum_{i\in \CD} r_i y_i + \tau_{\mathrm{swap}}q.
+    \label{eq:drone-work-lb}
+\end{equation}
+
+Cận dưới năng lượng:
+\begin{equation}
+    B(K+q)\ge \sum_{i\in \CD} e_i y_i.
+    \label{eq:energy-lb}
+\end{equation}
+
+Số lần thay pin cận dưới không cần vượt quá số khách drone:
+\begin{equation}
+    q\le \sum_{i\in \CD} y_i.
+    \label{eq:q-upper}
+\end{equation}
+
+% Nếu $r_{\min}=\min_{i\in \CD} r_i$, có thể thêm cận theo số lượng khách drone:
+% \begin{equation}
+%     r_{\min}\sum_{i\in \CD}y_i\le Kz_D.
+%     \label{eq:drone-count-lb}
+% \end{equation}
+
+Cuối cùng, makespan master thỏa:
+\begin{equation}
+    z\ge z_T,\qquad z\ge z_D.
+    \label{eq:z-link}
+\end{equation}
+
+\subsection{Loại subtour truck}
+
+Có hai cách xử lý subtour truck.
+
+\paragraph{Lazy-cut mode.}
+Ban đầu master không thêm tất cả subtour constraints. Khi callback phát hiện một subtour truck trên tập $Q\subseteq \C$, thêm cut:
+\begin{equation}
+    \sum_{i\in Q}\sum_{\substack{j\in Q\\j\neq i}}x_{ij}\le |Q|-1.
+    \label{eq:lazy-subtour}
+\end{equation}
+
+\paragraph{MTZ mode.}
+Nếu dùng MTZ, thêm biến thứ tự $u_i$ cho mỗi khách truck và các ràng buộc:
+\begin{align}
+    t_i\le u_i\le nt_i, && \forall i\in \C, \label{eq:mtz-domain}\\
+    u_j\ge u_i+1-n(1-x_{ij}), && \forall i,j\in \C,\;i\neq j. \label{eq:mtz-cut}
+\end{align}
+
+% =========================================================
+\section{CP subproblem}
+\label{sec:cp}
+% =========================================================
+
+Với một nghiệm nguyên master $\bar y$, tập khách được gán cho drone là
+\begin{equation}
+    S(\bar y)=\{i\in \C:\bar y_i=1\}.
+    \label{eq:drone-set}
+\end{equation}
+Để gọn ký hiệu, viết $S=S(\bar y)$.
+
+CP subproblem nhận tập $S$ và xếp lịch drone cho toàn bộ khách trong $S$. Gọi
+\[
+    D^*(S)=\min z_{\mathrm{CP}}
+\]
+là makespan drone tối ưu cho tập $S$.
+
+Một mô hình CP có thể dùng các biến:
+\begin{itemize}[leftmargin=2em]
+    \item $h_i\in\{0,1\}$: $i$ là khách đầu tiên trong một drone chain;
+    \item $s_i\in\{0,1\}$: có thay pin ngay trước khi phục vụ khách $i$;
+    \item $u_{ij}\in\{0,1\}$: trong một drone chain, khách $j$ được phục vụ ngay sau khách $i$;
+    \item $a_i,d_i$: thời điểm bắt đầu và kết thúc sortie phục vụ $i$;
+    \item $b_i$: lượng pin còn lại ngay trước khi phục vụ $i$;
+    \item $z_{\mathrm{CP}}$: makespan drone.
+\end{itemize}
+
+Đặt
+\[
+    H=\min\{K,|S|\}
+\]
+là số chain drone được dùng. Một số ràng buộc chính là:
+\begin{align}
+    \sum_{i\in S}h_i &= H, \label{eq:cp-heads}\\
+    \sum_{i\in S}\sum_{j\in S:j\neq i}u_{ij} &= |S|-H, \label{eq:cp-arcs}\\
+    h_i+\sum_{j\in S:j\neq i}u_{ji} &= 1, && \forall i\in S, \label{eq:cp-in}\\
+    \sum_{j\in S:j\neq i}u_{ij} &\le 1, && \forall i\in S. \label{eq:cp-out}
+\end{align}
+Nếu $i$ là head, thì
+\begin{equation}
+    a_i=0,\qquad s_i=0,\qquad b_i=B.
+    \label{eq:cp-head-prop}
+\end{equation}
+Với mỗi khách $i$:
+\begin{equation}
+    d_i=a_i+r_i+\tau_{\mathrm{swap}}s_i,
+    \label{eq:cp-duration}
+\end{equation}
+\begin{equation}
+    b_i\ge e_i,
+    \label{eq:cp-battery-enough}
+\end{equation}
+\begin{equation}
+    z_{\mathrm{CP}}\ge d_i.
+    \label{eq:cp-makespan}
+\end{equation}
+Nếu $u_{ij}=1$, thì $a_j=d_i$. Nếu không thay pin trước $j$, pin của $j$ bằng pin còn lại sau khi phục vụ $i$; nếu thay pin trước $j$, pin được reset về $B$.
+
+Ràng buộc phá đối xứng:
+\begin{equation}
+    u_{ij}\le s_j,\qquad \forall i,j\in S,\ i>j.
+    \label{eq:cp-symmetry}
+\end{equation}
+Nghĩa là nếu trong cùng một đoạn không thay pin, thứ tự khách có xu hướng tăng theo chỉ số.
+
+% =========================================================
+\section{Tiền xử lý và cố định biến}
+\label{sec:preprocess}
+% =========================================================
+
+Trước khi giải master, thuật toán xây dựng một nghiệm all-truck bằng heuristic tham lam để có một upper bound ban đầu $\UB_{0}$. Vì đây là nghiệm khả thi của bài toán gốc, mọi nghiệm tối ưu cần xét có objective không vượt quá $\UB_0$. Do đó có thể đặt:
+\begin{equation}
+    z\le \UB_0.
+    \label{eq:z-ub}
+\end{equation}
+
+Các quy tắc fix biến gồm:
+\begin{enumerate}[leftmargin=2em]
+    \item Nếu $i\notin \CD$, fix $y_i=0$, $t_i=1$.
+    \item Nếu $e_i>B$, fix $y_i=0$, $t_i=1$.
+    \item Nếu $r_i>\UB_0$, fix $y_i=0$, $t_i=1$.
+    \item Nếu một cung truck $(i,j)$ có $\tau^T_{ij}>\UB_0$, fix $x_{ij}=0$.
+\end{enumerate}
+
+\begin{proposition}[Tính đúng đắn của fix biến drone]
+Nếu $i\notin \CD$, hoặc $e_i>B$, hoặc $r_i>\UB_0$, thì việc fix $y_i=0$ không loại bỏ nghiệm tối ưu nào có objective nhỏ hơn hoặc bằng $\UB_0$.
+\end{proposition}
+\begin{proof}
+Nếu $i\notin \CD$ hoặc $e_i>B$, khách $i$ không thể được phục vụ bởi drone theo định nghĩa feasibility. Do đó mọi nghiệm khả thi của bài toán gốc đều có $y_i=0$.
+
+Nếu $r_i>\UB_0$, chỉ riêng sortie phục vụ $i$ đã có thời gian lớn hơn $\UB_0$. Mọi nghiệm có $y_i=1$ sẽ có $T_{\mathrm{drone}}>\UB_0$, nên makespan tổng thể cũng lớn hơn $\UB_0$. Vì đã có nghiệm khả thi giá trị $\UB_0$, các nghiệm này không cần xét khi tìm nghiệm tối ưu không vượt $\UB_0$.
+\end{proof}
+
+\begin{proposition}[Tính đúng đắn của fix cung truck]
+Nếu $\tau^T_{ij}>\UB_0$, thì fix $x_{ij}=0$ không loại bỏ nghiệm tối ưu nào có objective nhỏ hơn hoặc bằng $\UB_0$.
+\end{proposition}
+\begin{proof}
+Nếu $x_{ij}=1$, chỉ riêng cung truck $(i,j)$ đã đóng góp thời gian lớn hơn $\UB_0$ vào tuyến truck. Do đó $T_{\mathrm{truck}}>\UB_0$, kéo theo makespan tổng thể lớn hơn $\UB_0$. Vì ta chỉ cần xét nghiệm có makespan không vượt $\UB_0$, cung này có thể bị loại.
+\end{proof}
+
+% =========================================================
+\section{Nguyên tắc chấp nhận nghiệm và đảm bảo $z_{\mathrm{accepted}}$ giảm dần}
+\label{sec:accepted}
+% =========================================================
+
+Gọi $\UB$ là giá trị nghiệm tốt nhất hiện có của bài toán gốc đã được CP kiểm chứng. Tại một nghiệm nguyên của master, gọi:
+\[
+    z^M=\bar z,
+\]
+\[
+    T(\bar x)=\sum_{(i,j)\in\A}\tau^T_{ij}\bar x_{ij},
+\]
+và $S=S(\bar y)$.
+
+\begin{definition}[Nghiệm được chấp nhận]
+Một nghiệm master chỉ được chấp nhận cho bài toán gốc nếu CP tìm được lịch drone khả thi cho tập $S$. Nếu CP trả về một lịch drone có makespan $D(S)$, giá trị được chấp nhận là
+\begin{equation}
+    z_{\mathrm{accepted}}=\phi=\max\{T(\bar x),D(S)\}.
+    \label{eq:accepted-z}
+\end{equation}
+\end{definition}
+
+Điều này có nghĩa là không bao giờ cập nhật nghiệm tốt nhất bằng $z^M$ một cách trực tiếp, trừ khi đã biết chắc $D(S)\le z^M$ và khi đó dùng $\phi$ vẫn an toàn hơn.
+
+\begin{proposition}[Tính khả thi của nghiệm được chấp nhận]
+Nếu CP tìm được lịch drone khả thi cho $S$ với makespan $D(S)$, thì nghiệm gồm assignment $\bar y$, tuyến truck $\bar x$, và lịch drone này là nghiệm khả thi của bài toán gốc với objective $\phi$ trong \eqref{eq:accepted-z}.
+\end{proposition}
+\begin{proof}
+Master đảm bảo mỗi khách được gán cho đúng một phương tiện. Các khách truck được phục vụ bởi tuyến truck $\bar x$ và các khách drone trong $S$ được phục vụ bởi lịch drone CP. Do đó mọi khách được phục vụ đúng một lần. Thời gian hoàn thành truck là $T(\bar x)$, thời gian hoàn thành hệ drone là $D(S)$. Vì mục tiêu bài toán gốc là makespan, giá trị nghiệm bằng $\max\{T(\bar x),D(S)\}=\phi$.
+\end{proof}
+
+\begin{proposition}[Tính giảm dần của upper bound hợp lệ]
+Nếu thuật toán chỉ cập nhật $\UB$ khi tìm được nghiệm CP-checked có $\phi<\UB$, thì dãy các giá trị $\UB$ giảm đơn điệu.
+\end{proposition}
+\begin{proof}
+Mỗi lần cập nhật, giá trị mới là $\phi$ và điều kiện cập nhật là $\phi<\UB$. Vì vậy $\UB_{new}<\UB_{old}$. Nếu không có nghiệm tốt hơn, $\UB$ không đổi. Do đó dãy $\UB$ giảm đơn điệu không tăng.
+\end{proof}
+
+% =========================================================
+\section{Chiến lược gọi CP tại nghiệm nguyên master}
+\label{sec:cp-validation}
+% =========================================================
+
+Khi master sinh nghiệm nguyên với $z^M<\UB$, thuật toán gọi CP theo hai pha.
+
+\subsection{Pha 1: kiểm tra CP dưới $z^M$}
+
+Đầu tiên, CP được gọi với cutoff:
+\begin{equation}
+    z_{\mathrm{CP}}\le \lfloor z^M\rfloor.
+    \label{eq:cp-cutoff-zm}
+\end{equation}
+CP được cấu hình để dừng sau nghiệm khả thi đầu tiên.
+
+Nếu CP feasible, tức là tìm được $D(S)\le z^M$, thì nghiệm được chấp nhận với
+\[
+    \phi=\max\{T(\bar x),D(S)\}\le z^M,
+\]
+vì master đã có $z^M\ge T(\bar x)$. Nếu $\phi<\UB$, cập nhật $\UB$ và submit repaired incumbent.
+
+Nếu CP chứng minh infeasible dưới cutoff $z^M$, ta suy ra:
+\[
+    D^*(S)>z^M.
+\]
+Vì thời gian là số nguyên giây, có thể thêm cut:
+\begin{equation}
+    z_D+M_S\left(|S|-\sum_{i\in S}y_i\right)
+    \ge \lfloor z^M\rfloor+1.
+    \label{eq:cut-zm-plus-one}
+\end{equation}
+
+\subsection{Pha 2: giải tối ưu CP dưới incumbent $\UB$}
+\label{subsec:phase2-optimal-cp}
+
+Nếu pha 1 không tìm được lịch nằm dưới $z^M$, nghĩa là master có khả năng đang đánh giá thấp phần drone. Khi đó thuật toán chuyển sang pha 2. Trong pha này, CP không chỉ dừng ở nghiệm đầu tiên, mà được giải theo mục tiêu tối ưu:
+\begin{equation}
+    \min z_{\mathrm{CP}}
+    \label{eq:cp-phase2-objective}
+\end{equation}
+trong miền có khả năng cải thiện incumbent:
+\begin{equation}
+    z_{\mathrm{CP}}\le \lfloor \UB-1\rfloor.
+    \label{eq:cp-cutoff-ub-minus-one}
+\end{equation}
+Nói cách khác, pha 2 tìm lịch drone tốt nhất cho tập drone hiện tại $S$, nhưng chỉ trong vùng có thể tạo nghiệm tốt hơn incumbent hiện tại.
+
+Nếu CP chứng minh tối ưu và tìm được nghiệm với giá trị
+\[
+    D^*(S)<\UB,
+\]
+thì nghiệm repaired tốt nhất ứng với assignment và truck route hiện tại có giá trị
+\begin{equation}
+    z_{\mathrm{accepted}}
+    =
+    \max\{T(\bar x),D^*(S)\}.
+    \label{eq:accepted-z-phase2}
+\end{equation}
+Nếu $z_{\mathrm{accepted}}<\UB$, nghiệm này được chấp nhận, cập nhật
+\[
+    \UB \leftarrow z_{\mathrm{accepted}},
+\]
+và submit lại cho solver bằng một nghiệm master đầy đủ:
+\[
+    z_T=T(\bar x),\qquad
+    z_D=D^*(S),\qquad
+    z=z_{\mathrm{accepted}}.
+\]
+Giá trị này có thể hiểu là giá trị master repaired mới cho cùng assignment/truck route, nhưng nó không tự động thay đổi biến master nếu không được submit lại bằng \texttt{setSolution}.
+
+Do pha 2 giải CP tối ưu, ta cũng thu được lower bound chính xác cho tập drone hiện tại:
+\[
+    LB_{\mathrm{CP}}(S)=D^*(S).
+\]
+Vì vậy callback thêm cut mạnh:
+\begin{equation}
+    z_D+M_S\left(|S|-\sum_{i\in S}y_i\right)
+    \ge D^*(S).
+    \label{eq:phase2-optimal-cut}
+\end{equation}
+Cut này buộc master không được đánh giá thấp lại cùng tập drone $S$ trong các nghiệm sau.
+
+Nếu CP chứng minh infeasible dưới cutoff $\UB-1$, tức là không tồn tại lịch drone nào thỏa
+\[
+    z_{\mathrm{CP}}\le \UB-1,
+\]
+thì ta có:
+\[
+    D^*(S)\ge \UB.
+\]
+Khi đó tập drone hiện tại không thể tạo ra nghiệm tốt hơn incumbent. Callback thêm cutoff cut:
+\begin{equation}
+    z_D+M_S\left(|S|-\sum_{i\in S}y_i\right)
+    \ge \UB.
+    \label{eq:cut-ub}
+\end{equation}
+Không được thêm no-good cut trong trường hợp này, vì tập $S$ có thể vẫn feasible, chỉ là không thể cải thiện incumbent hiện tại.
+
+\begin{proposition}[Tính tối ưu của nghiệm repaired trong pha 2]
+Với một nghiệm nguyên master cố định $(\bar y,\bar x)$ và tập drone $S=S(\bar y)$, nếu CP ở pha 2 được giải tối ưu và trả về $D^*(S)$, thì giá trị
+\[
+    \max\{T(\bar x),D^*(S)\}
+\]
+là makespan nhỏ nhất có thể đạt được trong số các nghiệm giữ nguyên assignment $\bar y$ và truck route $\bar x$.
+\end{proposition}
+\begin{proof}
+Khi giữ nguyên $\bar y$ và $\bar x$, thời gian truck $T(\bar x)$ là cố định, còn phần duy nhất có thể cải thiện là lịch drone cho tập $S$. Theo định nghĩa, $D^*(S)$ là makespan drone nhỏ nhất khả thi cho tập $S$. Vì objective của bài toán gốc là maximum giữa thời gian truck và makespan drone, giá trị nhỏ nhất có thể đạt được khi giữ nguyên $(\bar y,\bar x)$ là $\max\{T(\bar x),D^*(S)\}$.
+\end{proof}
+
+\begin{proposition}[Tính hợp lệ của cutoff cut ở pha 2]
+Nếu CP chứng minh không tồn tại lịch drone cho $S$ với $z_{\mathrm{CP}}\le \UB-1$, thì cut \eqref{eq:cut-ub} là hợp lệ cho mọi nghiệm master có chọn đầy đủ tập $S$ cho drone.
+\end{proposition}
+\begin{proof}
+CP infeasible dưới cutoff $\UB-1$ nghĩa là mọi lịch drone khả thi cho $S$ đều có makespan ít nhất $\UB$. Do đó, bất kỳ nghiệm master nào vẫn chọn tất cả khách trong $S$ cho drone đều phải có drone makespan thật không nhỏ hơn $\UB$. Cut \eqref{eq:cut-ub} áp đặt $z_D\ge \UB$ khi $\sum_{i\in S}y_i=|S|$. Nếu một nghiệm không chọn đầy đủ $S$, phần Big-M làm cut được nới lỏng. Vì vậy cut không loại bỏ nghiệm khả thi nào có thể cải thiện incumbent.
+\end{proof}
+
+% =========================================================
+\section{Các cuts truyền thông tin từ CP về master}
+\label{sec:cuts}
+% =========================================================
+
+\subsection{CP subset lower-bound cut}
+
+Nếu CP hoặc một cận phân tích cung cấp lower bound hợp lệ
+\[
+    LB_{\mathrm{CP}}(S)\le D^*(S),
+\]
+thêm cut:
+\begin{equation}
+    z_D+M_S\left(|S|-\sum_{i\in S}y_i\right)
+    \ge LB_{\mathrm{CP}}(S).
+    \label{eq:cp-subset-lb-cut}
+\end{equation}
+
+\begin{proposition}[Tính hợp lệ của CP subset lower-bound cut]
+Nếu $LB_{\mathrm{CP}}(S)\le D^*(S)$, thì cut \eqref{eq:cp-subset-lb-cut} không loại bỏ nghiệm khả thi tối ưu nào của bài toán gốc.
+\end{proposition}
+\begin{proof}
+Xét một nghiệm nguyên của master. Nếu nghiệm đó không chọn đầy đủ mọi khách trong $S$ cho drone, thì $|S|-\sum_{i\in S}y_i\ge 1$ và cut được nới lỏng bởi Big-M.
+
+Nếu nghiệm đó chọn toàn bộ $S$ cho drone, thì phần Big-M bằng 0 và cut trở thành $z_D\ge LB_{\mathrm{CP}}(S)$. Vì mọi lịch drone phục vụ toàn bộ $S$ đều có makespan ít nhất $D^*(S)$, và $LB_{\mathrm{CP}}(S)\le D^*(S)$, yêu cầu $z_D\ge LB_{\mathrm{CP}}(S)$ là cần thiết. Do đó cut hợp lệ.
+\end{proof}
+
+\subsection{Cutoff cuts}
+
+Nếu CP chứng minh infeasible dưới cutoff $z_{\mathrm{CP}}\le H$, thì:
+\[
+    D^*(S)\ge H+1
+\]
+trong trường hợp thời gian nguyên. Do đó thêm:
+\begin{equation}
+    z_D+M_S\left(|S|-\sum_{i\in S}y_i\right)
+    \ge H+1.
+    \label{eq:general-cutoff-cut}
+\end{equation}
+Hai trường hợp quan trọng là $H=\lfloor z^M\rfloor$ và $H=\lfloor \UB-1\rfloor$.
+
+\begin{proposition}[Tính hợp lệ của cutoff cut]
+Nếu CP chứng minh không tồn tại lịch drone cho $S$ với $z_{\mathrm{CP}}\le H$, thì cut \eqref{eq:general-cutoff-cut} hợp lệ.
+\end{proposition}
+\begin{proof}
+Điều kiện infeasible dưới cutoff nghĩa là mọi lịch drone khả thi cho $S$ đều có makespan lớn hơn $H$. Vì thời gian nguyên, $D^*(S)\ge H+1$. Áp dụng Mệnh đề về CP subset lower-bound cut với $LB_{\mathrm{CP}}(S)=H+1$ ta thu được tính hợp lệ.
+\end{proof}
+
+\subsection{No-good cut}
+
+Nếu CP chứng minh tập $S$ infeasible thật sự, không phải infeasible do cutoff, thêm:
+\begin{equation}
+    \sum_{i\in S}y_i\le |S|-1.
+    \label{eq:nogood-cut}
+\end{equation}
+
+\begin{proposition}[Tính hợp lệ của no-good cut]
+Nếu không tồn tại lịch drone khả thi phục vụ toàn bộ $S$, thì cut \eqref{eq:nogood-cut} hợp lệ.
+\end{proposition}
+\begin{proof}
+Nếu master chọn tất cả khách trong $S$ cho drone, thì $\sum_{i\in S}y_i=|S|$, vi phạm cut. Nhưng mọi nghiệm như vậy đều không thể mở rộng thành nghiệm khả thi của bài toán gốc do CP đã chứng minh không tồn tại lịch drone cho $S$. Vì vậy cut chỉ loại bỏ các nghiệm infeasible của bài toán gốc.
+\end{proof}
+
+\begin{remark}
+Không được dùng no-good cut nếu CP infeasible chỉ vì cutoff $z_{\mathrm{CP}}\le \UB-1$. Trong trường hợp đó, $S$ có thể vẫn có lịch drone khả thi, nhưng không có lịch nào cải thiện incumbent.
+\end{remark}
+
+\subsection{Làm chặt Big-M động}
+
+Các cut subset có dạng chung:
+\begin{equation}
+    z_D+M_S\left(|S|-\sum_{i\in S}y_i\right)\ge L.
+    \label{eq:generic-subset-cut}
+\end{equation}
+Ở đây $L$ là RHS của cut, ví dụ $LB_{\mathrm{CP}}(S)$, $\lfloor z^M\rfloor+1$, hoặc $\UB$.
+
+\begin{proposition}[Big-M động]
+Trong cut \eqref{eq:generic-subset-cut}, có thể chọn $M_S=L$ nếu $z_D\ge 0$.
+\end{proposition}
+\begin{proof}
+Nếu master chọn toàn bộ $S$, biểu thức $|S|-\sum_{i\in S}y_i=0$, cut trở thành $z_D\ge L$ như mong muốn.
+
+Nếu master không chọn đầy đủ $S$, do $y_i$ là nhị phân tại nghiệm nguyên, ta có $|S|-\sum_{i\in S}y_i\ge 1$. Khi chọn $M_S=L$, vế trái ít nhất là $z_D+L\ge L$ vì $z_D\ge 0$. Do đó cut tự động thỏa trong trường hợp này. Vì vậy $M_S=L$ là đủ và chặt hơn nhiều so với một Big-M rất lớn.
+\end{proof}
+
+% =========================================================
+\section{User cuts tại nghiệm phân số}
+\label{sec:mipnode-cuts}
+% =========================================================
+
+Tại callback \texttt{MIPNODE}, nghiệm của master thường là nghiệm LP phân số. Vì tập khách drone chưa được xác định nguyên, thuật toán không gọi CP. Thay vào đó, chỉ thêm các user cuts hợp lệ cho truck route.
+
+\subsection{Fractional subtour cuts}
+Với một tập khách $Q\subseteq \C$, thêm:
+\begin{equation}
+    \sum_{i\in Q}\sum_{\substack{j\in Q\\j\neq i}}x_{ij}\le |Q|-1.
+    \label{eq:mipnode-subtour}
+\end{equation}
+
+\subsection{Directed connectivity cuts}
+Nếu $k\in Q$ được truck phục vụ, truck route phải kết nối tập $Q$ với phần còn lại:
+\begin{align}
+    \sum_{i\in Q}\sum_{j\notin Q}x_{ij} &\ge t_k, && k\in Q, \label{eq:out-cut}\\
+    \sum_{i\notin Q}\sum_{j\in Q}x_{ij} &\ge t_k, && k\in Q. \label{eq:in-cut}
+\end{align}
+
+\begin{proposition}
+Các cuts \eqref{eq:mipnode-subtour}--\eqref{eq:in-cut} là hợp lệ cho mọi nghiệm nguyên khả thi của truck route.
+\end{proposition}
+\begin{proof}
+Trong một nghiệm truck route hợp lệ, các khách truck nằm trên một đường đi duy nhất từ depot xuất phát đến depot kết thúc. Vì vậy không thể tồn tại một chu trình đóng tách rời depot trên tập $Q$, suy ra subtour cut hợp lệ. Nếu một khách $k\in Q$ được truck phục vụ, đường đi từ depot đến $k$ rồi từ $k$ đến depot kết thúc phải đi vào và đi ra khỏi tập $Q$ ít nhất một lần, trừ trường hợp $Q$ chứa depot, nhưng ở đây $Q\subseteq \C$. Do đó hai connectivity cuts hợp lệ.
+\end{proof}
+
+% =========================================================
+\section{Các bất đẳng thức làm chặt dựa trên UB}
+\label{sec:ub-tightening}
+% =========================================================
+
+Khi đã có upper bound hợp lệ $\UB$, có thể dùng nó để làm chặt mô hình hoặc tiền xử lý. Cách an toàn nhất là thêm các bất đẳng thức dùng $z$, $z_T$, $z_D$ thay vì thay trực tiếp bằng $\UB$.
+
+\subsection{Cận số khách drone}
+Từ workload drone:
+\[
+    \sum_{i\in \CD}r_i y_i+\tau_{\mathrm{swap}}q\le Kz_D\le Kz.
+\]
+Nếu đồng thời có $z\le \UB$, suy ra:
+\[
+    \sum_{i\in \CD}r_i y_i\le K\UB.
+\]
+Sắp xếp $r_i$ tăng dần và tìm số lớn nhất $U_D$ sao cho tổng $U_D$ giá trị nhỏ nhất không vượt $K\UB$. Khi đó:
+\begin{equation}
+    \sum_{i\in \CD}y_i\le U_D.
+    \label{eq:drone-cardinality-ub}
+\end{equation}
+
+\subsection{Cận số khách truck}
+Với mỗi khách truck, định nghĩa chi phí đi ra nhỏ nhất:
+\[
+    c_i^{out}=\min_{j:(i,j)\in\A}\tau^T_{ij}.
+\]
+Và chi phí đi ra nhỏ nhất từ depot:
+\[
+    c_0^{out}=\min_{j:(0,j)\in\A}\tau^T_{0j}.
+\]
+Mọi truck route phục vụ tập khách truck có:
+\begin{equation}
+    z_T\ge c_0^{out}+\sum_{i\in\C}c_i^{out}t_i.
+    \label{eq:truck-out-lb}
+\end{equation}
+Tương tự có thể xây dựng cận incoming. Khi $z_T\le z\le \UB$, các cận này suy ra upper bound cho số khách truck.
+
+% =========================================================
+\section{Branching strategies}
+\label{sec:branching}
+% =========================================================
+
+Gurobi không cho phép custom branching callback đầy đủ trong framework hiện tại. Do đó thuật toán định hướng branching bằng các thuộc tính:
+\[
+    \texttt{BranchPriority},\qquad \texttt{VarHintVal},\qquad \texttt{VarHintPri}.
+\]
+
+\paragraph{Assignment-first.}
+Ưu tiên branch trên các biến $y_i,t_i$ trước các biến $x_{ij}$, nhằm xác định sớm tập drone $S$.
+
+\paragraph{CP-aware.}
+Ưu tiên các khách có khả năng làm CP khó hơn:
+\begin{equation}
+    s_i^{CP}=0.5r_i+2e_i.
+    \label{eq:cp-aware}
+\end{equation}
+
+\paragraph{Ambiguity-first.}
+Ưu tiên các khách mà truck và drone có chi phí gần nhau. Với
+\[
+    \Delta_i^T=\tau^T_{0i}+\tau^T_{i,n+1},
+\]
+độ mơ hồ là $|\Delta_i^T-r_i|$. Giá trị càng nhỏ thì priority càng cao.
+
+\paragraph{Drone-benefit.}
+Ưu tiên khách có lợi rõ khi dùng drone:
+\begin{equation}
+    s_i^{BEN}=\max\{0,\Delta_i^T-r_i\}.
+    \label{eq:drone-benefit}
+\end{equation}
+
+\paragraph{Hybrid.}
+Chuẩn hóa các score về $[0,1]$ rồi trộn:
+\begin{equation}
+    s_i^{HYB}=w_{CP}s_i^{CP}+w_{AMB}s_i^{AMB}+w_{BEN}s_i^{BEN}.
+    \label{eq:hybrid}
+\end{equation}
+Một lựa chọn ban đầu là
+\[
+    w_{CP}=0.45,\\quad w_{AMB}=0.25,\quad w_{BEN}=0.30.
+\]
+
+\begin{remark}
+Các chiến lược branching chỉ ảnh hưởng đến thứ tự tìm kiếm của solver. Chúng không thêm hoặc loại bỏ nghiệm, nên không ảnh hưởng tính đúng đắn của thuật toán.
+\end{remark}
+
+% =========================================================
+\section{Heuristics và local search}
+\label{sec:heuristics}
+% =========================================================
+
+\subsection{All-truck heuristic}
+Thuật toán dùng nghiệm all-truck tham lam để tạo upper bound ban đầu. Nghiệm này cũng giúp đặt $z\le \UB_0$ và kích hoạt các bước tiền xử lý.
+
+\subsection{Incumbent repair}
+Khi master sinh nghiệm nguyên, CP kiểm tra tập drone $S$. Nếu CP feasible, nghiệm repaired được tạo với:
+\[
+    z_T=T(\bar x),\qquad z_D=D(S),\qquad z=\max\{T(\bar x),D(S)\}.
+\]
+Nếu nghiệm này cải thiện $\UB$, nó được submit lại cho Gurobi.
+
+\subsection{Local search quanh incumbent}
+Sau khi có nghiệm CP-checked, thuật toán có thể thử các move đơn giản:
+\begin{enumerate}[leftmargin=2em]
+    \item \textbf{Drone-to-truck}: chuyển một khách drone sang truck bằng cheapest insertion.
+    \item \textbf{Truck-to-drone}: chuyển một khách truck sang drone nếu khách đó drone-feasible.
+\end{enumerate}
+Mỗi nghiệm lân cận được kiểm tra nhanh bằng CP với cutoff $\UB-1$. Nếu tìm được nghiệm tốt hơn, local search không chỉ cập nhật biến $\UB$ nội bộ, mà còn phải chuyển nghiệm này thành một nghiệm master đầy đủ và submit lại cho solver.
+
+\subsection{Submit nghiệm local search dưới dạng nghiệm master đầy đủ}
+\label{subsec:local-search-master-hint}
+
+Giả sử local search tìm được một nghiệm lân cận gồm tuyến truck $R'$ và tập khách drone $S'$. Sau khi CP kiểm tra tập $S'$ và tìm được lịch drone khả thi với makespan $D(S')$, ta tính:
+\begin{equation}
+    T(R')=\sum_{(i,j)\in R'}\tau^T_{ij},
+    \qquad
+    \phi' = \max\{T(R'),D(S')\}.
+    \label{eq:ls-phi}
+\end{equation}
+Nếu
+\[
+    \phi'<\UB,
+\]
+thì local search đã tìm được một nghiệm khả thi tốt hơn của bài toán gốc. Tuy nhiên, để Gurobi hoặc MILP master chấp nhận nghiệm này như một incumbent mới, nghiệm đó phải được ánh xạ thành giá trị đầy đủ cho các biến của master:
+\begin{align}
+    y_i' &= 1, && \forall i\in S', \label{eq:ls-y-one}\\
+    y_i' &= 0, && \forall i\in \C\setminus S', \label{eq:ls-y-zero}\\
+    t_i' &= 1-y_i', && \forall i\in \C, \label{eq:ls-t}\\
+    x_{ij}' &= 1, && \text{nếu cung }(i,j)\text{ xuất hiện trong tuyến }R', \label{eq:ls-x-one}\\
+    x_{ij}' &= 0, && \text{ngược lại}. \label{eq:ls-x-zero}
+\end{align}
+Các biến makespan phải được gán nhất quán:
+\begin{equation}
+    z_T' = T(R'),
+    \qquad
+    z_D' = D(S'),
+    \qquad
+    z' = \phi' = \max\{z_T',z_D'\}.
+    \label{eq:ls-z-values}
+\end{equation}
+Nếu master có thêm biến phụ như $q$ hoặc biến thứ tự MTZ $u_i$, thì cũng nên gán giá trị nhất quán cho các biến này khi có thể. Ví dụ, $q$ có thể được gán bằng số lần thay pin trong lịch drone do CP trả về; các biến thứ tự MTZ có thể được gán theo vị trí của khách trên tuyến truck.
+
+Trong triển khai với Gurobi callback, bước này tương ứng với việc gọi một thủ tục dạng
+\[
+    \texttt{SubmitRepairedIncumbent}(y',t',x',z_T',z_D',z'),
+\]
+trong đó nghiệm được gửi cho solver bằng \texttt{setSolution}. Điều này khác với \texttt{VarHintVal}: \texttt{VarHintVal} chỉ là gợi ý định hướng tìm kiếm, còn \texttt{setSolution} mới là cách gửi một nghiệm heuristic candidate để solver kiểm tra và có thể chấp nhận làm incumbent.
+
+\begin{remark}[Phân biệt solution hint và nghiệm incumbent]
+Các branching hints như \texttt{VarHintVal} và \texttt{VarHintPri} có tác dụng định hướng solver nên thử giá trị nào trước. Chúng không đảm bảo solver sẽ chấp nhận một nghiệm. Vì vậy, khi local search tìm được nghiệm mới, cần submit đầy đủ giá trị của các biến master bằng \texttt{setSolution}; việc chỉ cập nhật hint là chưa đủ để biến nghiệm local search thành incumbent chính thức.
+\end{remark}
+
+\begin{proposition}[Tính hợp lệ của nghiệm local search được submit]
+Nếu local search tạo ra $(R',S')$, CP tìm được lịch drone khả thi cho $S'$ với makespan $D(S')$, và các biến master được gán theo \eqref{eq:ls-y-one}--\eqref{eq:ls-z-values}, thì nghiệm được submit là một nghiệm khả thi của bài toán gốc với giá trị $\phi'$.
+\end{proposition}
+\begin{proof}
+Theo cách gán \eqref{eq:ls-y-one}--\eqref{eq:ls-t}, mỗi khách hàng thuộc đúng một trong hai tập: truck hoặc drone. Theo \eqref{eq:ls-x-one}--\eqref{eq:ls-x-zero}, các biến $x'$ biểu diễn đúng tuyến truck $R'$, bắt đầu tại depot $0$ và kết thúc tại depot giả $n+1$. Do đó phần truck khả thi và có thời gian $T(R')$.
+
+Mặt khác, CP đã tìm được một lịch drone khả thi phục vụ toàn bộ tập $S'$ với makespan $D(S')$. Vì vậy phần drone cũng khả thi. Khi đặt
+\[
+    z' = \max\{T(R'),D(S')\},
+\]
+ta có $z'\ge z_T'$ và $z'\ge z_D'$. Do đó nghiệm kết hợp truck--drone là nghiệm khả thi của bài toán gốc, và giá trị makespan đúng bằng $\phi'$.
+\end{proof}
+
+\begin{proposition}[Tính đơn điệu giảm của upper bound hợp lệ]
+Giả sử $\UB$ luôn được cập nhật bởi quy tắc
+\[
+    \UB \leftarrow \phi'
+    \quad\text{khi và chỉ khi}\quad
+    \phi'<\UB,
+\]
+trong đó $\phi'$ là giá trị của một nghiệm đã được CP kiểm chứng. Khi đó dãy upper bound hợp lệ là dãy không tăng, và giảm nghiêm ngặt mỗi khi có nghiệm local search tốt hơn được chấp nhận.
+\end{proposition}
+\begin{proof}
+Tại mỗi lần cập nhật, điều kiện cập nhật là $\phi'<\UB$. Do đó giá trị mới của $\UB$ nhỏ hơn giá trị cũ. Nếu không có nghiệm tốt hơn, $\UB$ được giữ nguyên. Vì mọi $\phi'$ dùng để cập nhật đều đến từ nghiệm có tuyến truck khả thi và lịch drone khả thi đã được CP kiểm chứng, mỗi giá trị $\UB$ sau cập nhật đều là upper bound hợp lệ của bài toán gốc.
+\end{proof}
+
+\begin{proposition}
+Các heuristic và local search không làm mất nghiệm tối ưu.
+\end{proposition}
+\begin{proof}
+Các heuristic và local search chỉ sinh nghiệm khả thi mới, submit nghiệm đó cho solver, và cập nhật upper bound nếu nghiệm tốt hơn. Chúng không thêm ràng buộc loại bỏ nghiệm khỏi master. Do đó chúng không thể loại bỏ nghiệm tối ưu. Chúng chỉ có thể cải thiện incumbent và tăng tốc quá trình giải.
+\end{proof}
+
+% =========================================================
+\section{Điều kiện dừng dựa trên valid gap}
+\label{sec:valid-gap}
+% =========================================================
+
+Gọi $\UBV$ là nghiệm tốt nhất đã được CP kiểm chứng, và $\LBM$ là lower bound hiện tại của master. Vì master là relaxation của bài toán gốc, $\LBM$ là lower bound hợp lệ cho bài toán gốc. Điều kiện dừng là:
+\begin{equation}
+    \frac{\UBV-\LBM}{\UBV}\le \epsilon.
+    \label{eq:valid-gap-stop}
+\end{equation}
+Với yêu cầu gap $1\%$, đặt $\epsilon=0.01$.
+
+\begin{proposition}[Tính đúng đắn của điều kiện dừng]
+Nếu \eqref{eq:valid-gap-stop} thỏa, nghiệm hiện tại có sai lệch tương đối không vượt quá $\epsilon$ so với tối ưu của bài toán gốc.
+\end{proposition}
+\begin{proof}
+Gọi $Z^*$ là giá trị tối ưu của bài toán gốc. Vì $\UBV$ là nghiệm khả thi, ta có $Z^*\le \UBV$. Vì master là relaxation, ta có $\LBM\le Z^*$. Do đó:
+\[
+    0\le \UBV-Z^*\le \UBV-\LBM.
+\]
+Chia hai vế cho $\UBV>0$ thu được:
+\[
+    \frac{\UBV-Z^*}{\UBV}\le \frac{\UBV-\LBM}{\UBV}\le \epsilon.
+\]
+Vì vậy nghiệm hiện tại đạt gap hợp lệ không vượt quá $\epsilon$.
+\end{proof}
+
+% =========================================================
+\section{Thuật toán tổng quát}
+\label{sec:algorithm}
+% =========================================================
+
+\begin{algorithm}[H]
+\caption{Khung MILP Master -- CP Subproblem với kiểm tra nghiệm và cuts}
+\label{alg:master-cp}
+\begin{algorithmic}[1]
+\Require Instance $I$, số drone $K$, thời gian thay pin $\tau_{\mathrm{swap}}$, ngưỡng gap $\epsilon$
+\Ensure Nghiệm tốt nhất đã CP-check và lower bound master
+
+\State Xây dựng MILP master với các biến $y,t,x,z_T,z_D,z,q$
+\State Sinh nghiệm all-truck để khởi tạo $\UBV$
+\State Áp dụng tiền xử lý và fix biến dựa trên $\UBV$
+\State Thiết lập branching strategy, ví dụ \texttt{hybrid}
+\State Đăng ký callback cho \texttt{MIPSOL} và \texttt{MIPNODE}
+
+\While{solver chưa dừng}
+    \If{callback tại \texttt{MIPNODE}}
+        \State Đọc nghiệm LP relaxation
+        \State Thêm fractional subtour cuts và connectivity cuts nếu bị vi phạm
+    \EndIf
+
+    \If{callback tại \texttt{MIPSOL}}
+        \State Đọc nghiệm nguyên $(\bar y,\bar t,\bar x,\bar z)$
+        \If{truck route có subtour}
+            \State Thêm subtour lazy cut và bỏ qua nghiệm này
+        \EndIf
+        \State $S\gets \{i:\bar y_i=1\}$
+        \State $T\gets T(\bar x)$
+        \If{$T\ge \UBV$}
+            \State Bỏ qua nghiệm vì không thể cải thiện incumbent
+        \EndIf
+        \State Gọi CP với cutoff $z_{\mathrm{CP}}\le \lfloor \bar z\rfloor$
+        \If{CP feasible}
+            \State $D\gets z_{\mathrm{CP}}$
+            \State $\phi\gets \max\{T,D\}$
+            \If{$\phi<\UBV$}
+                \State Cập nhật $\UBV\gets \phi$ và submit repaired incumbent
+            \EndIf
+        \Else
+            % \If{CP chứng minh infeasible dưới $\lfloor \bar z\rfloor$}
+            %     \State Thêm cut $z_D+M_S(|S|-\sum_{i\in S}y_i)\ge \lfloor \bar z\rfloor+1$
+            % \EndIf
+            \State Giải tối ưu CP với mục tiêu $\min z_{\mathrm{CP}}$ và cutoff $z_{\mathrm{CP}}\le \lfloor \UBV-1\rfloor$
+            \If{CP tối ưu và có nghiệm}
+                \State $D^*(S)\gets z_{\mathrm{CP}}^*$
+                \State $z_{\mathrm{accepted}}\gets \max\{T,D^*(S)\}$
+                \If{$z_{\mathrm{accepted}}<\UBV$}
+                    \State Cập nhật $\UBV\gets z_{\mathrm{accepted}}$ và submit repaired incumbent đầy đủ
+                \EndIf
+                \State Thêm cut $z_D+M_S(|S|-\sum_{i\in S}y_i)\ge D^*(S)$
+            \Else
+                \If{CP chứng minh infeasible dưới $\UBV-1$}
+                    \State Thêm cut $z_D+M_S(|S|-\sum_{i\in S}y_i)\ge \UBV$
+                \EndIf
+            \EndIf
+        \EndIf
+        \If{CP trả về lower bound hợp lệ $LB_{\mathrm{CP}}(S)$}
+            \State Thêm $z_D+M_S(|S|-\sum_{i\in S}y_i)\ge LB_{\mathrm{CP}}(S)$
+        \EndIf
+        \State Thử local search quanh nghiệm hiện tại
+        \If{$(\UBV-\LBM)/\UBV\le \epsilon$}
+            \State Dừng thuật toán
+        \EndIf
+    \EndIf
+\EndWhile
+
+\State Trả về nghiệm tốt nhất đã CP-check và $\LBM$
+\end{algorithmic}
+\end{algorithm}
+
+% =========================================================
+\section{Các lưu ý triển khai}
+\label{sec:implementation-notes}
+% =========================================================
+
+\begin{enumerate}[leftmargin=2em]
+    \item Không cập nhật $\UBV$ bằng objective của master $z^M$ nếu chưa có lịch drone feasible.
+    \item Giá trị nghiệm được chấp nhận luôn là $\phi=\max\{z_{truck},z_{drone}\}$.
+    \item CP feasible objective chỉ là upper bound của CP subproblem; không dùng nó làm RHS của lower-bound cut nếu CP chưa optimal.
+    \item Ở pha 2, nếu CP được giải tối ưu dưới cutoff $\UBV-1$, giá trị $D^*(S)$ vừa dùng để tạo nghiệm repaired tốt nhất cho assignment/truck route hiện tại, vừa là RHS hợp lệ cho cut làm chặt master.
+    \item Nếu CP infeasible do cutoff, dùng cutoff cut, không dùng no-good cut.
+    \item Big-M trong subset cuts nên dùng $M_S=L$, trong đó $L$ là RHS của cut.
+    \item User cuts tại \texttt{MIPNODE} phải hợp lệ cho mọi nghiệm nguyên, không phụ thuộc vào nghiệm CP cụ thể.
+    \item Local search chỉ submit nghiệm tốt hơn; nó không thêm ràng buộc, nên không ảnh hưởng tính đúng đắn.
+\end{enumerate}
+
+\end{document}

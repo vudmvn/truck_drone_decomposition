@@ -1,0 +1,13 @@
+instance:
+  file: data/instances/toy_6.txt
+
+slave:
+  type: single-drone-ordering
+  time_limit: 5
+
+local_search:
+  enabled: true
+  max_rounds: 100
+
+output:
+  result_csv: results/csv/result.csv

@@ -1,0 +1,39 @@
+BUILD_OK
+-- The CXX compiler identification is GNU 14.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (0.7s)
+-- Generating done (0.0s)
+-- Build files have been written to: /mnt/data/truck_drone_decomposition_code_v5_exact_single_drone_slaves/build_test
+
+[  3%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/main.cpp.o[0m
+[  7%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/core/Instance.cpp.o[0m
+[ 11%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/core/Options.cpp.o[0m
+[ 14%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/io/DataReader.cpp.o[0m
+[ 18%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/core/Solution.cpp.o[0m
+[ 22%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/io/ResultWriter.cpp.o[0m
+[ 25%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/io/Logger.cpp.o[0m
+[ 29%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/master/MasterProblem.cpp.o[0m
+[ 33%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/master/MasterModelBuilder.cpp.o[0m
+[ 37%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/master/MasterCallback.cpp.o[0m
+[ 40%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/master/MasterCuts.cpp.o[0m
+[ 44%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/master/MasterPreprocess.cpp.o[0m
+[ 48%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/master/BranchingStrategy.cpp.o[0m
+[ 55%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/slave/MILPSubproblem.cpp.o[0m
+[ 55%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/slave/CPSubproblem.cpp.o[0m
+[ 59%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/slave/SingleDroneOrderingSlave.cpp.o[0m
+[ 62%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/slave/SingleDroneOrderingCPSatSlave.cpp.o[0m
+[ 66%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/slave/SingleDroneOrderingMILPSlave.cpp.o[0m
+[ 70%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/slave/SlaveSolverFactory.cpp.o[0m
+[ 74%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/heuristics/InitialSolution.cpp.o[0m
+[ 77%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/heuristics/LocalSearch.cpp.o[0m
+[ 81%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/heuristics/TruckTwoOpt.cpp.o[0m
+[ 85%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/heuristics/DroneGreedyInsert.cpp.o[0m
+[ 88%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/utils/RouteUtils.cpp.o[0m
+[ 92%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/utils/MathUtils.cpp.o[0m
+[ 96%] [32mBuilding CXX object CMakeFiles/truck_drone_solver.dir/src/utils/Timer.cpp.o[0m
+[100%] [32m[1mLinking CXX executable truck_drone_solver[0m
+[100%] Built target truck_drone_solver

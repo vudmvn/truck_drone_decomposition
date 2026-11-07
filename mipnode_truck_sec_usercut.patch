@@ -1,0 +1,300 @@
+--- /mnt/data/sec_original/truck_drone_decomposition/include/bbcp/core/Options.h	2026-05-11 16:11:32.000000000 +0000
++++ include/bbcp/core/Options.h	2026-05-11 17:50:13.876882839 +0000
+@@ -71,6 +71,12 @@
+         SlaveSolverType slave_solver = SlaveSolverType::CP;
+ 
+         bool enable_mipnode_cuts = false;
++
++        // Enable fractional truck subtour-elimination user cuts at MIPNODE.
++        // This is intentionally configured in main.cpp, not parsed from argv,
++        // so experiments can switch it on/off by changing one line.
++        bool enable_mipnode_truck_sec_cuts = false;
++
+         bool use_branching_var_hints = true;
+ 
+         SlaveOptions slave_options;
+--- /mnt/data/sec_original/truck_drone_decomposition/src/main.cpp	2026-05-11 16:12:34.000000000 +0000
++++ src/main.cpp	2026-05-11 17:50:13.877269000 +0000
+@@ -116,6 +116,12 @@
+     }
+ 
+     master_options.use_branching_var_hints = true;
++
++    // Hard-coded experiment switch.
++    // Set this to false to disable fractional truck SEC user cuts at MIPNODE.
++    // No command-line argument is needed.
++    master_options.enable_mipnode_truck_sec_cuts = true;
++
+     master_options.verbose = true;
+     master_options.cut_verbose = false;
+     master_options.slave_options.log_search = false;
+--- /mnt/data/sec_original/truck_drone_decomposition/include/bbcp/master/MasterCallback.h	2026-05-11 16:05:15.000000000 +0000
++++ include/bbcp/master/MasterCallback.h	2026-05-11 17:50:13.877730617 +0000
+@@ -113,6 +113,19 @@
+ 
+         bool IsTruckArcAllowed(Node i, Node j) const;
+ 
++        void SeparateFractionalTruckSECCuts(
++            const std::vector<double> &trel,
++            const std::vector<std::vector<double>> &xrel,
++            int &cuts_added,
++            int max_cuts);
++
++        bool TryAddTruckSECCutForSet(
++            const std::vector<Node> &S,
++            const std::vector<double> &trel,
++            const std::vector<std::vector<double>> &xrel,
++            int &cuts_added,
++            int max_cuts);
++
+         void SeparateFractionalTruckConnectivityCuts(
+             const std::vector<double> &trel,
+             const std::vector<std::vector<double>> &xrel,
+--- /mnt/data/sec_original/truck_drone_decomposition/src/master/MasterCallback.cpp	2026-05-11 15:59:44.000000000 +0000
++++ src/master/MasterCallback.cpp	2026-05-11 17:50:36.251053362 +0000
+@@ -731,7 +731,19 @@
+         int cuts_added = 0;
+         const int max_cuts = 80;
+ 
+-        SeparateFractionalTruckConnectivityCuts(trel, xrel, cuts_added, max_cuts);
++        // Optional fractional subtour-elimination user cuts for the truck path.
++        // This is separated at MIPNODE with addCut(), while integer truck
++        // subtours are still handled at MIPSOL with addLazy().
++        if (options_.enable_mipnode_truck_sec_cuts &&
++            options_.subtour_mode == MasterSubtourMode::SEC)
++        {
++            SeparateFractionalTruckSECCuts(trel, xrel, cuts_added, max_cuts);
++        }
++
++        if (cuts_added < max_cuts)
++        {
++            SeparateFractionalTruckConnectivityCuts(trel, xrel, cuts_added, max_cuts);
++        }
+ 
+         if (cuts_added < max_cuts)
+         {
+@@ -744,6 +756,224 @@
+         }
+     }
+ 
++    void MasterCallback::SeparateFractionalTruckSECCuts(
++        const std::vector<double> &trel,
++        const std::vector<std::vector<double>> &xrel,
++        int &cuts_added,
++        int max_cuts)
++    {
++        const int N = inst_.NumNodes();
++
++        // Use several thresholds to obtain candidate components from the
++        // fractional truck support graph. High thresholds catch clear subtours;
++        // low thresholds catch weaker fractional components.
++        const std::vector<double> thresholds = {0.50, 0.25, 0.10, 0.05, 1e-6};
++
++        std::set<std::vector<Node>> tried_sets;
++
++        for (double threshold : thresholds)
++        {
++            if (cuts_added >= max_cuts)
++            {
++                return;
++            }
++
++            std::vector<std::vector<int>> adj(N);
++
++            for (int i = 0; i < N; ++i)
++            {
++                for (int j = 0; j < N; ++j)
++                {
++                    if (!IsTruckArcAllowed(i, j))
++                    {
++                        continue;
++                    }
++
++                    // Undirected support graph for component detection.
++                    if (xrel[i][j] > threshold || xrel[j][i] > threshold)
++                    {
++                        adj[i].push_back(j);
++                        adj[j].push_back(i);
++                    }
++                }
++            }
++
++            std::vector<int> visited(N, 0);
++
++            for (Node root = 1; root <= inst_.n; ++root)
++            {
++                if (visited[root])
++                {
++                    continue;
++                }
++
++                std::vector<int> stack = {root};
++                std::vector<Node> comp;
++                visited[root] = 1;
++
++                bool contains_start = false;
++                bool contains_end = false;
++
++                while (!stack.empty())
++                {
++                    const int v = stack.back();
++                    stack.pop_back();
++
++                    if (v == inst_.start_depot)
++                    {
++                        contains_start = true;
++                    }
++                    if (v == inst_.end_depot)
++                    {
++                        contains_end = true;
++                    }
++
++                    if (v >= 1 && v <= inst_.n && trel[v] > 1e-9)
++                    {
++                        comp.push_back(v);
++                    }
++
++                    for (int nxt : adj[v])
++                    {
++                        if (visited[nxt])
++                        {
++                            continue;
++                        }
++                        visited[nxt] = 1;
++                        stack.push_back(nxt);
++                    }
++                }
++
++                // Only components disconnected from both depot nodes can define
++                // a truck subtour candidate.
++                if (contains_start || contains_end)
++                {
++                    continue;
++                }
++
++                if (comp.size() <= 1)
++                {
++                    continue;
++                }
++
++                std::sort(comp.begin(), comp.end());
++
++                if (tried_sets.count(comp) != 0)
++                {
++                    continue;
++                }
++                tried_sets.insert(comp);
++
++                TryAddTruckSECCutForSet(comp, trel, xrel, cuts_added, max_cuts);
++
++                if (cuts_added >= max_cuts)
++                {
++                    return;
++                }
++            }
++        }
++    }
++
++    bool MasterCallback::TryAddTruckSECCutForSet(
++        const std::vector<Node> &S,
++        const std::vector<double> &trel,
++        const std::vector<std::vector<double>> &xrel,
++        int &cuts_added,
++        int max_cuts)
++    {
++        if (S.size() <= 1 || cuts_added >= max_cuts)
++        {
++            return false;
++        }
++
++        const double eps = 1e-6;
++
++        // Optional-customer SEC:
++        //   sum_{i,j in S, i != j} x_ij <= sum_{i in S} t_i - t_h.
++        // h is chosen as the most truck-selected node in the current relaxation
++        // to make the separated inequality as tight as possible.
++        Node h = S.front();
++        double sum_t = 0.0;
++
++        for (Node i : S)
++        {
++            sum_t += trel[i];
++            if (trel[i] > trel[h])
++            {
++                h = i;
++            }
++        }
++
++        if (trel[h] <= eps)
++        {
++            return false;
++        }
++
++        double lhs_value = 0.0;
++
++        for (Node i : S)
++        {
++            for (Node j : S)
++            {
++                if (i == j)
++                {
++                    continue;
++                }
++                if (!IsTruckArcAllowed(i, j))
++                {
++                    continue;
++                }
++                lhs_value += xrel[i][j];
++            }
++        }
++
++        const double rhs_value = sum_t - trel[h];
++
++        if (lhs_value <= rhs_value + 1e-6)
++        {
++            return false;
++        }
++
++        GRBLinExpr lhs = 0.0;
++        GRBLinExpr rhs = 0.0;
++
++        for (Node i : S)
++        {
++            rhs += data_.t[i];
++
++            for (Node j : S)
++            {
++                if (i == j)
++                {
++                    continue;
++                }
++                if (!IsTruckArcAllowed(i, j))
++                {
++                    continue;
++                }
++                lhs += data_.x[i][j];
++            }
++        }
++
++        rhs -= data_.t[h];
++
++        addCut(lhs <= rhs);
++        ++cuts_added;
++
++        if (options_.cut_verbose)
++        {
++            std::cout << "[USERCUT-MIPNODE-SEC] truck optional SEC"
++                      << ", |S|=" << S.size()
++                      << ", h=" << h
++                      << ", lhs=" << lhs_value
++                      << ", rhs=" << rhs_value
++                      << ", S=" << NodeListString(S)
++                      << "\n";
++        }
++
++        return true;
++    }
++
+     void MasterCallback::SeparateFractionalTruckConnectivityCuts(
+         const std::vector<double> &trel,
+         const std::vector<std::vector<double>> &xrel,
