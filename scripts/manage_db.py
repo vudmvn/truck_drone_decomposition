@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-DEFAULT_DB = "results/results.db"
+DEFAULT_DB = str(Path(__file__).resolve().parent.parent / "results" / "results.db")
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS experiments (
