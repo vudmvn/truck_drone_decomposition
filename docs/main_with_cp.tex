@@ -1,0 +1,1728 @@
+ \documentclass[3p, authoryear, 11pt]{elsarticle}
+\usepackage{graphicx} 
+% Required for inserting images
+\usepackage{xfrac}
+\usepackage[normalem]{ulem}
+\newcommand{\stkout}[1]{\ifmmode\text{\sout{\ensuremath{#1}}}\else\sout{#1}\fi}
+\usepackage[nice]{nicefrac}
+\usepackage{adjustbox}
+\usepackage[utf8]{inputenc}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage[table,xcdraw]{xcolor}
+\usepackage{bm}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{subcaption}
+\usepackage{url}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,      % false: bọc viền (mặc định); true: tô màu chữ
+    linkcolor=blue,       % màu của các liên kết nội bộ (mục lục, công thức, hình ảnh...)
+    citecolor=blue,       % màu của trích dẫn tài liệu tham khảo
+    urlcolor=blue,        % màu của đường link web
+}
+\usepackage{breakurl}
+\usepackage[unicode=true, colorlinks=true,linkcolor=blue, citecolor=blue, urlcolor=blue]{hyperref}
+\usepackage{svg}
+\usepackage{natbib}
+\hypersetup{breaklinks=true}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage[normalem]{ulem}
+\usepackage{pdflscape}
+\allowdisplaybreaks
+\usepackage{newtxtext}
+\usepackage{longtable}
+\usepackage{setspace}
+\usepackage{makecell}
+\newtheorem{thm}{Theorem}
+\newtheorem{proposition}[thm]{Proposition}
+
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+
+\newcommand{\HMH}[1]{\textcolor{blue}{HMH: #1}}	
+\newcommand{\MA}[1]{\textcolor{red}{MA: #1}}	
+\newcommand{\trang}[1]{\textcolor{violet}{Trang : #1}}	%#1
+% Natbib setup for author-year style
+\usepackage{natbib}
+ \bibpunct[, ]{(}{)}{,}{a}{}{,}%
+ \def\bibfont{\small}%
+ \def\bibsep{\smallskipamount}%
+ \def\bibhang{24pt}%
+ \def\newblock{\ }%
+ \def\BIBand{and}%
+
+% \EquationsNumberedThrough
+\title{Optimizing Drone Delivery: To Swap or Not to Swap Batteries?}
+\author[add3]{Tuan Anh Pham}
+\ead{ptanh@neu.edu.vn}
+
+\author[add3]{Nhat Minh Dang}
+\ead{11247196@st.neu.edu.vn}
+
+\author[add3]{Tat Dat Nguyen}
+\ead{dat@gmail.com}
+
+\author[add2]{Minh Ho{\`a}ng H{\`a}\corref{cor1}}
+\ead{hoanghm@neu.edu.vn}
+
+\author[add3]{Duc Minh Vu}
+\ead{minhvd@neu.edu.vn}
+
+\address[add2]{Center for Applied Data Science and Artificial Intelligence, Faculty of Data Science and Artificial Intelligence, National Economics University, Hanoi, Vietnam}
+
+\address[add3]{Smart Logistics and Supply Chain Management Laboratory, Faculty of Data Science and Artificial Intelligence, National Economics University, Hanoi, Vietnam}
+
+\cortext[cor1]{Corresponding author.}
+
+
+\setstretch{1.15}
+\begin{document}
+
+
+
+ \begin{abstract}
+% Drone delivery has emerged as a promising solution for last-mile logistics, with growing attention on optimizing drone-truck coordination. However, most existing models assume drones always start each trip with a fully charged battery, achieved through battery swapping at the depot. This assumption overlooks practical concerns such as battery degradation from frequent charging and the non-negligible time required for battery replacement. In this study, we revisit the Parallel Drone Scheduling Traveling Salesman Problem (PDSTSP) by incorporating realistic constraint related to drone battery management. Specifically, we address the trade-off between battery swapping time and overall delivery efficiency. When drones return to the depot, they may either swap batteries or be relaunched without swapping if sufficient charge remains. We model and solve this problem using two methods: a Mixed-Integer Linear Programming (MILP) formulation and a Genetic Algorithm (GA) tailored to handle the problem’s combinatorial complexity and operational nuances. Additionally, two drone energy consumption models are considered: one with constant energy usage per trip, and another using Dorling’s linear model, where power consumption increases proportionally with payload weight. Through extensive simulations, we evaluate scenarios with different battery swap durations (e.g., 3 and 5 minutes) and compare them to the baseline case where no swap time is considered. Results show a clear trade-off: incorporating realistic battery swap times leads to a noticeable increase in makespan, reflecting delays introduced by swap procedures. Nevertheless, allowing drones to operate without mandatory battery swapping when feasible significantly mitigates this impact. Our findings highlight the importance of integrating energy and operational constraint in drone delivery models and suggest that flexible energy management policies can improve performance while accounting for practical limitations in real-world deployments.
+
+Drone delivery has become a promising solution for last-mile logistics. However, most existing models assume instantaneous battery replacement and full recharge before each sortie, ignoring realistic swap-time delays of 2-3 minutes for automated systems and 5-10 minutes for manual operations (about 3 minutes on average in practice).
+This study revisits the Parallel Drone Scheduling Traveling Salesman Problem (PDSTSP) to examine whether battery swap-time needs to be explicitly integrated into the optimization process. To this end, we incorporate battery swapping operations with their associated time and energy constraints. 
+We propose two complementary formulations:
+a time-based model with fixed drone endurance
+and an energy-based model with payload-dependent energy consumption.
+To solve these models, we develop three approaches:
+a Mixed-Integer Linear Programming (MILP) formulation,
+a Constraint Programming (CP) model,
+and a tailored Hybrid Genetic Search (HGS) algorithm.
+Based on extensive computational experiments on 801 benchmark instances (10-100 customers), we compare optimization without swap-time followed by re-evaluation and optimization with swap-time explicitly integrated. The results show that ignoring swap-time during optimization leads to systematic underestimation of the makespan, by up to about $10\%$ (approximately $18$ minutes delay). In contrast, explicitly accounting for swap-time reduces this deviation to below $1\%$ (approximately $1$-$2$ minutes). Overall, the findings indicate that this underestimation is primarily caused by ignoring swap-time during optimization, and highlight the importance of explicitly integrating swap-time into the optimization process in multi-trip drone delivery systems.
+
+ \end{abstract}
+
+
+\maketitle
+
+\section{Introduction}
+\label{sec:intro}
+
+Drones are rapidly gaining traction in last-mile delivery, not only as a subject of intense academic research, but also as an emerging operational solution adopted by major logistics and technology companies such as Amazon, Alphabet (Wing), and DHL. These companies are actively testing and expanding drone delivery networks to reduce delivery times, operational costs, and greenhouse gas emissions.
+For example, Amazon recently received approval from the U.S. Federal Aviation Administration (FAA) to expand beyond-visual-line-of-sight (BVLOS) operations~\cite{apnews2024}, while Alphabet’s Wing aims to deliver millions of packages annually through an autonomous drone network~\cite{supplychaindive2023}.
+
+Despite these advances, practical implementation still faces several challenges, including limited flight range, sensitivity to weather conditions, and, in particular, the need for effective battery management and swap strategies~\cite{liu_integrating_2025,vilkki_automatic_2024}. Similar to other electric vehicles, the operational efficiency of drone delivery systems is strongly constrained by battery capacity and the downtime required for recharging or replacement. 
+In practical systems designed for continuous operations, battery swapping is commonly used because it is significantly faster than recharging. 
+Automated swapping systems typically require approximately $2$-$3$ minutes, while manual replacement may take $5$-$10$ minutes, with an average duration of about $3$ minutes reported in industrial applications. 
+When drones perform multiple trips during a delivery process, this additional time can accumulate and may influence the overall completion time.
+
+However, most existing studies on drone delivery often assume that drones start each new trip with a fully charged battery, thereby neglecting the time required for battery replacement. This simplification implicitly assumes that swap-time has a limited impact on routing and scheduling decisions. As a result, the delivery schedule obtained from such models may underestimate the actual completion time. This raises a natural question: is it necessary to explicitly integrate swap-time into the optimization process, or can it be safely neglected?
+
+To address this question, we study the Parallel Drone Scheduling Traveling Salesman Problem (PDSTSP), in which a truck and multiple drones operate in parallel to minimize the overall completion time (makespan). In this problem, each drone may perform multiple trips sequentially during the delivery process. The time required for battery swapping accumulates across these trips and increases the completion time of the corresponding drone. When this completion time becomes the latest among all vehicles, the overall makespan is affected. Therefore, the PDSTSP provides a suitable problem setting to examine how this modeling simplification influences delivery performance and routing decisions.
+
+In this study, we explicitly model (i) the non-negligible time required for battery swapping, and (ii) the possibility of drones to continue operating without swapping when their residual energy is sufficient for the next mission.
+To the best of our knowledge, this is the first study to incorporate both battery-swapping decisions and swap-time considerations into the PDSTSP problem.
+
+To represent different modeling assumptions, we develop two formulations:
+
+\begin{enumerate}
+    \item \textbf{Time-based Battery Swapping Model:} The energy consumption of drones is assumed to be constant, independent of factors such as speed or payload weight. Under this assumption, the drone's flight range is constrained by a predefined duration.
+    \item \textbf{Energy-based Battery Swapping Model:} The energy consumption of a drone increases linearly with the carried payload weight, following the empirical relationship proposed by ~\cite{dorling_vehicle_2017}.
+\end{enumerate}
+
+By incorporating these operational details, this work provides insights into how battery swapping affects the performance of drone delivery systems. The main contributions of this study are:
+
+\begin{itemize}
+    \item We investigate a common modeling simplification in drone routing, namely the assumption that battery swap-time can be neglected, and examine its impact in the PDSTSP with multi-trip drone operations.
+
+    \item We design an evaluation framework to compare two approaches: optimizing without swap-time followed by re-evaluation, and optimizing with swap-time explicitly integrated in order to access the impact of ignoring swap-time.
+
+    \item We develop tailored exact methods, including a mixed-integer linear programming (MILP) formulation and two constraint programming (CP) models based on 2-index and 3-index formulations, as well as an adapted hybrid genetic search (HGS) algorithm designed to efficiently handle swap-time decisions and multi-trip drone operations.
+
+    \item Through computational experiments on 801 benchmark instances, we show that the underestimation of the makespan is mainly caused by ignoring swap-time during optimization. Ignoring swap-time leads to systematic underestimation of the makespan, by up to about 10\% in some cases, while explicitly integrating it reduces this deviation to below 1\%.
+
+\end{itemize}
+
+
+
+
+The remainder of this paper is organized as follows. 
+Section~\ref{sec:literature_review} reviews the relevant literature. 
+Section~\ref{sec:problem_description} presents the problem definition and mathematical formulations. Section~\ref{sec:exact_methods} and Section~\ref{sec:hgs} describe the proposed solution approaches. Section~\ref{sec:computational_experiments} reports the computational results and presents the sensitivity analysis. 
+Finally, Section~\ref{sec:conclusions} concludes the paper and discusses future research directions.
+
+\section{Literature Review}
+\label{sec:literature_review}
+
+Drone delivery has been studied from different perspectives, including routing problems, energy modeling, and battery management. 
+Many models focus on improving delivery efficiency under various operational constraints. 
+To better position our study, this section reviews three main research areas: 
+(i) drone routing and scheduling problems, 
+(ii) drone energy consumption models, and 
+(iii) battery management strategies. 
+We pay particular attention to how battery-related aspects are treated in routing and scheduling models.
+
+\subsection{Drone Routing and Scheduling Problems}
+
+A wide range of studies has examined drone-based delivery systems, either as standalone operations or in coordination with ground vehicles. 
+The seminal work of~\citet{murray_flying_2015} introduced two foundational models: the \textit{Flying Sidekick Traveling Salesman Problem} (FSTSP), which coordinates a truck and a single drone, and the \textit{Parallel Drone Scheduling Traveling Salesman Problem} (PDSTSP), which considers a truck and multiple drones operating in parallel from a single depot. These formulations established the basis for subsequent research on truck–drone coordination and multi-drone routing. Complementing these, the \textit{Drone Delivery Problem} (DDP) proposed by~\citet{dorling_vehicle_2017} focuses on pure drone operations without any ground vehicles, formulating a multi-trip drone routing model for a fleet of drones departing from a single depot.
+
+Building on the FSTSP, \citet{agatz_optimization_2018} introduced one of the first optimization frameworks for the truck–drone delivery problem, formulating an integer program and several fast heuristics including a dynamic programming approach for truck–drone assignment, supported by theoretical guarantees and numerical analysis. Their study provided an important methodological basis for subsequent researches.
+Among the most rigorous exact approaches, \citet{roberti_exact_2021} developed a branch-and-price algorithm published in \textit{Transportation Science}, which remains a reference for exact optimization of the traveling salesman problem with drone (TSP-D). Later works further extended these formulations: \citet{boccia_columnandrow_2021} proposed a column-and-row generation method, and \citet{dellamico_exact_2022} presented alternative exact and decomposition-based models. 
+To enhance scalability, several hybrid metaheuristics have been proposed, including simulated annealing~\citep{yu_solving_2023}, classification-based learning~\citep{amitrano_classificationbased_2025}, and two-stage evolutionary designs~\citep{chen_twostage_2025}. 
+Recent extensions have incorporated additional operational constraints, such as time windows~\citep{budak_hybrid_2023} and energy-consumption considerations~\citep{jeong_truckdrone_2019,aksit_flying_2024,esyurek_impact_2024}, while others explored multiple-drone coordination~\citep{rave_twoindexed_2025,schaumann_flying_2025} and infrastructure-based delivery via lockers~\citep{amitrano_new_2025}. 
+However, most studies on the FSTSP have focused on coordination and scheduling mechanisms, while battery replacement time is generally not modeled explicitly.
+
+Research on the PDSTSP has evolved toward more realistic and computationally efficient formulations. 
+Early works proposed matheuristics~\citep{dellamico_matheuristic_2020} and iterative or ant colony heuristics~\citep{mbiadousaleu_iterative_2018,dinh_ants_2021}, followed by metaheuristic and exact approaches such as variable neighborhood search~\citep{lei_improved_2022}, branch-and-cut~\citep{nguyen_efficient_2023}, and constraint programming~\citep{montemanni_solving_2023}. 
+Subsequent studies extended the model to include multiple vehicles or collective drones~\citep{saleu_parallel_2022,nguyen_parallel_2023,montemanni_parallel_2024} and multi-trip pickup-and-delivery operations with time windows~\citep{meng_multivisit_2025}. 
+Recent advances also address uncertainty through robust optimization~\citep{barzanjeh_logicbased_2025}. 
+Yet, existing PDSTSP formulations usually assume that drones begin each trip with a fully charged battery, and do not explicitly account for the time required for battery replacement.
+
+For standalone drone fleets, the multi-trip drone routing problem (MTDRP) has focused primarily on modeling realistic energy consumption and operational efficiency in drone-only delivery systems. 
+Early works introduced energy-dependent formulations~\citep{dorling_vehicle_2017,cheng_drone_2020} and compared different consumption models for planning realism~\citep{zhang_energy_2021}. 
+Subsequent studies generalized these formulations to handle arbitrary or nonlinear energy functions~\citep{ahmadi-javid_delivery_2022} and variable-speed routing decisions~\citep{wu_energyefficient_2024}. 
+Metaheuristic approaches have also been developed to minimize energy in pickup-and-delivery settings~\citep{kyriakakis_grasp_2023}. 
+Similarly, MTDRP formulations usually assume that drones start each trip with a fully charged battery, without modeling the time required for battery replacement.
+
+Across the three problem variants discussed above, battery replacement is usually handled in a simplified manner. Neither the decision to perform a battery swap nor the associated swap-time is explicitly modeled in routing formulations. As a result, their impact on overall completion time has not been systematically evaluated. This gap motivates the present study.
+
+\subsection{Drone Energy Consumption Models}
+
+Various energy consumption models have been proposed for unmanned aerial vehicles, ranging from simple linear approximations to more realistic nonlinear and component-based formulations. 
+The early model of~\citet{dorling_vehicle_2017} assumes energy consumption increases linearly with payload and battery weight. Because of its simplicity, this formulation is commonly used in routing models.
+
+Other studies consider alternative formulations that include additional factors such as flight speed and aerodynamic effects. For example,~\citet{cheng_drone_2020} compared different energy consumption models and showed that routing feasibility may depend on the chosen energy model.~\citet{zhang_energy_2021} classified existing models into three categories: 
+(i) lift-to-drag ratio models~\citep{dandrea_guest_2014}, 
+(ii) component-based models that decompose total power into lift, drag, and rotor-induced components~\citep{dorling_vehicle_2017,stolaroff_energy_2018,liu_power_2017}, and 
+(iii) data-driven regression models derived from experimental flight data~\citep{tseng_flight_2017,alyassi_autonomous_2017}. 
+% Reported energy consumption rates vary substantially—from less than 20~J/m to more than 400~J/m for payloads up to 7~kg—even among comparable drone configurations, highlighting the sensitivity of results to model choice and calibration.
+
+More recently,~\citet{li_energy-consumption_2024} proposed a unified formulation for rotary-wing drones that enhances empirical accuracy by jointly modeling aerodynamic drag, thrust, and propeller efficiency. 
+Although this approach improves predictive fidelity, it requires detailed drone-specific parameters and significantly increases computational complexity, posing challenges for integration into large-scale routing and scheduling optimization models.
+
+Overall, existing studies show a trade-off between model detail and computational tractability. 
+In this study, a linear energy consumption model following~\citet{dorling_vehicle_2017} is adopted to preserve model simplicity and focus on the impact of battery swapping decisions and associated time. The energy consumption model is expressed as:
+\begin{align}
+    p(m) = \alpha m + \beta \notag
+    \label{eq:01}
+\end{align}
+where $\alpha$ represents the power consumed per kilogram of combined battery and payload weight $m$, and $\beta$ is the power required to keep the drone frame in the air.
+Nevertheless, the proposed framework remains fully compatible with more complex nonlinear or data-driven energy formulations, thus allowing future extensions to incorporate detailed aerodynamic effects or variable-speed energy dynamics.
+
+\subsection{Battery Management Strategies}
+
+Battery management is an important issue in drone logistics, as limited flight endurance restricts flight duration and operational flexibility. 
+Three main strategies are commonly discussed in the literature~\citep{liu_integrating_2025}: 
+(i) full charging, 
+(ii) partial charging, and 
+(iii) battery swapping. 
+Under the full and partial charging strategies, drones must remain at the depot for an extended period, often tens of minutes until the charging process is complete. 
+In contrast, the battery swapping strategy allows shorter turnaround times by replacing depleted batteries with fully charged ones, especially with the recent developments in automated swapping systems~\citep{vilkki_automatic_2024,hoang_design_2024}. 
+This approach reduces downtime and may improve fleet utilization.
+
+Several studies examined the design and optimization of battery swapping systems. 
+\citet{cokyasar_designing_2021} proposed a network design model for drone delivery systems equipped with automated swapping machines, while \citet{cokyasar_optimization_2021} optimized the location and capacity of swapping stations to minimize operational costs. 
+Other works explored the integration of energy and routing decisions~\citep{dukkanci_minimizing_2021,wang_vehicle_2019}, and provided comprehensive reviews of charging and swapping techniques~\citep{mohsan_comprehensive_2022}. 
+More recently, \citet{liu_integrating_2025} incorporated battery-related decisions into the truck–drone tandem delivery problem, and \citet{liu_realtime_2025} proposed a real-time scheduling framework for urban UAV deliveries.
+
+Despite these advancements, the \textit{time required for the battery swapping operation}, typically ranging from 2 to 3 minutes for automated systems~\citep{vilkki_automatic_2024,cokyasar_designing_2021} and 5 to 10 minutes for manual replacement~\citep{fhwa_uas_2018}, is generally not incorporated as an explicit component in routing or scheduling models. 
+Empirical evidence indicates that the average swapping duration is about 3 minutes, based on industrial observations with Asylon~\citep{cokyasar_designing_2021}. 
+Such duration may affect delivery completion time, particularly in settings where drones perform multiple trips. 
+
+Motivated by this gap, the present study explicitly incorporates battery swapping decisions together with non-zero swap-time into the PDSTSP formulations to quantitatively evaluate their effect on system makespan.
+
+\section{Problem Description and Model Formulation}
+\label{sec:problem_description}
+
+To assess the operational impact of battery swapping time, we extend the classical PDSTSP problem by integrating explicit swap decisions into the routing framework. Two variants are proposed: one where battery swapping follows round-trip travel time (\textit{PDSTSP-T}), and another where swapping is triggered by remaining energy levels (\textit{PDSTSP-E}). Specifically:
+\begin{itemize}
+    \item \textbf{\textit{PDSTSP-T: }} This variant treats battery capacity as a fixed time budget. It determines the necessity of a battery swap by tracking the total flight time spent; once the remaining time budget is not enough for the next planned sortie, a swapping operation is required at the depot.
+    \label{sec:time_model_des}
+    
+    \item \textbf{\textit{PDSTSP-E: }} This variant incorporates detailed energy consumption mechanics. A battery swap is triggered only when the drone's remaining energy is insufficient to cover the power required for the next delivery sortie.
+    \label{sec:en_model_des}
+\end{itemize}
+
+Both formulations capture synchronization between truck and drone, service time constraints and energy limitations. 
+The resulting models are solved using two exact optimization approaches and a metaheuristic framework.
+
+\subsection{Problem Description}
+
+The problem considers a set of customers, each of whom must be served exactly once by either a delivery truck or one of several drones operating in coordination with the truck. While some customers may be infeasible for drone delivery due to parcel weight or energy limitations, all customers are eligible to be served by the truck. For customers that satisfy the drone constraint, the solver may freely assign either vehicle to optimize overall delivery efficiency.
+
+The truck departs from and returns to the depot exactly once to complete its tour. In contrast, drones perform multiple sorties, returning to the depot between each trip for package reloading and battery swapping as needed. In this model, a drone sortie is defined as a round-trip flight that begins at the depot, serves a single customer, and returns directly to the depot. After completing a delivery, the drone returns to the depot, where its remaining allowable flight time or remaining energy is evaluated. If the residual flight time or energy is insufficient for the next sortie, a battery swap is enforced before the drone can continue to operate.
+
+Multiple drones may operate simultaneously, and each drone’s schedule must respect non-overlapping sortie intervals. Meanwhile, the truck follows a single route that visits all customers that are not served by drones. The truck route is modeled as a circuit, and its total travel time is computed based on Manhattan distances between customer locations.
+
+The objective is to minimize the total makespan, defined as the maximum completion time across the truck’s tour and all individual drone sorties. The solution must ensure that all customers are served exactly once and both vehicles return to the depot.
+
+\subsection{Model Formulation:}
+\label{sec:model_formulation_math}
+\subsubsection{Model 1: Time-based Battery Swapping }
+\label{sec:time_model_math}
+
+Let $C = \{1, 2, \dots, c\}$ denote the set of all customers. Let $C_d \subseteq C$ denote the subset of customers that are drone feasible, considering the limitations of flight range, payload capacity, and energy endurance.
+
+Although only one physical depot exists, we assign it two unique node indices: node $0$ for departure and node $c+1$ for return. Thus, the set of all nodes is defined as $N = \{0, 1, \dots, c+1\}$. To facilitate routing decisions, we define $N_0 = \{0, 1, \dots, c\}$ as the set of nodes from which a vehicle may depart, and $N^+ = \{1, 2, \dots, c+1\}$ as the set of nodes to which a vehicle may arrive. Let $V$ denote the set of available drones, and let $S = \{0, 1, \dots, t_d\}$ represent the set of battery swapping sessions available to each drone.
+
+% The model uses the following parameters: $\tau_{\text{swap}}$ is the time required to swap a drone’s battery; $T$ is the maximum allowable flight time (endurance) for a drone; $\tau_{ij}$ and $\tau'_{ij}$ represent the travel time from node $i$ to node $j$ for the truck and drone respectively, where $i, j \in N$, while $\tau_{ij}$ and $\tau'_{ij}$ represent the travel time from node $i$ to node $j$ for the truck and drone respectively, where $i, j \in N$. Meanwhile, $M$ is a sufficiently large constant used to relax the battery swap constraint when the binary variable is zero. Therefore, it should be chosen to be greater or equal to the maximum number of battery swap sessions a drone can perform, or alternatively, be set equal to the number of nodes in the graph.
+
+
+% The decision variables are defined as follows: $x_{ij} \in \{0,1\}$ equals $1$ if the truck travels directly from node $i$ to node $j$; $y_{iv} \in \{0,1\}$ equals $1$ if drone $v \in V$ serves customer $i \in C_d$; $s_{ikv} \in \{0,1\}$ equals $1$ if drone $v$ swaps its battery in the $k$-th session to serve customer $i$; $u_i \in \mathbb{Z}$ is a sequence variable indicating the position of node $i$ in the truck’s route, used for subtour elimination; and $t_v \in \mathbb{Z}$ denotes the total number of battery swaps performed by drone $v$ to complete its assigned deliveries.
+
+% The objective function is represented by the variable $z \in \mathbb{R}_{\geq 0}$, which denotes the overall makespan of the delivery operation. It is defined as the maximum completion time among all UAV sorties and the truck route. 
+
+
+
+
+% \begin{align}
+% \text{min} \quad & z \label{eq:1.1} \\
+% \text{s.t.} \quad & z \geq \sum_{i \in N_0} \sum_{j \in N_+ \setminus \{i\}} \tau_{ij} x_{ij} \label{eq:1.2} \\
+% & z \geq \sum_{i \in C_d} (\tau'_{0i} + \tau'_{ic+1}) y_{iv} + \tau_{swap}t_v, \quad \forall v \in V \label{eq:1.3} \\
+% & \sum_{i\in C_d}  2\tau'_{0i} s_{ikv} \leq T, \quad \forall k \in S, \quad \forall v \in V \label{eq:1.4} \\
+% & \sum_{i \in N_0, i \neq j} x_{ij} + \sum_{v \in V} y_{jv} = 1, \quad \forall j \in C \label{eq:1.5} \\
+% & \sum_{j \in N_+} x_{0j} = 1 \label{eq:1.6} \\
+% & \sum_{i \in N_0} x_{ic+1} = 1 \label{eq:1.7} \\
+% & \sum_{i \in N_0, i \neq j} x_{ij} = \sum_{k \in N_+, k \neq j} x_{jk}, \quad \forall j \in C \label{eq:1.8} \\
+% & t_v \geq k - M(1-s_{ikv}), \quad \forall i \in C_d, \forall k \in S, \forall v \in V \label{eq:1.9} \\
+% & y_{iv} = \sum_{k \in S} s_{ikv}, \quad \forall i \in C, \forall v \in V \label{eq:1.10} \\
+% & \sum_{i \in C_d} s_{ikv} \leq \sum_{i \in C_d} s_{i,k-1,v}, \quad \forall v \in V, \forall k \in S \setminus \{1\} \label{eq:1.11} \\
+% & u_i - u_j + 1 \leq (c+2)(1 - x_{ij}), \quad \forall i \in C, \forall j \in N_+ \setminus \{i\} \label{eq:1.12} \\
+% & 1 \leq u_i \leq c+2, \quad \forall i \in N_+ \label{eq:1.13} \\
+% & x_{ij} \in \{0,1\}, \quad \forall i \in N_0, \forall j \in N_+ \setminus \{i\} \label{eq:1.14} \\
+% & y_{iv} \in \{0,1\}, \quad \forall i \in C_d, \forall v \in V \label{eq:1.15} \\
+% & s_{ikv} \in \{0,1\}, \quad \forall i \in C_d, \forall k \in S, \forall v \in V \label{eq:1.16}\\
+% \end{align}
+
+
+
+% The objective function minimizes the latest return time to the depot among all vehicles, effectively minimizing the overall makespan of the delivery operation.
+
+% Constraint~\eqref{eq:1.2} ensures that the truck’s total travel time is properly reflected in the objective function, while Constraint~\eqref{eq:1.3} accounts for the drones’ total travel time, including battery swapping durations.
+
+% Constraint~\eqref{eq:1.4} enforces the flight endurance limit of each drone, ensuring that the total flight time within any swapping session does not exceed the allowable threshold.
+
+% To guarantee complete customer service, Constraint~\eqref{eq:1.5} ensures that each customer is visited exactly once, either by the truck or by a drone. Constraint~\eqref{eq:1.6} and Constraint~\eqref{eq:1.7} enforce that the truck departs from and returns to the depot exactly once.
+
+% Routing consistency is maintained by Constraint~\eqref{eq:1.8}, which requires that if the truck enters a customer node, it must also exit that node. Constraint~\eqref{eq:1.9} ensures that the total number of swaps performed by a drone is at least equal to the highest index of any assigned swap session, while Constraint~\eqref{eq:1.10} determines the number of battery swapping sessions based on swap assignments. Constraint~\eqref{eq:1.11} enforces sequential swap consistency, ensuring that later swap sessions are only operated only if earlier ones have been assigned.
+
+% Constraint~\eqref{eq:1.12} eliminates subtours by enforcing a valid sequence of visited nodes in the truck’s route, and Constraint~\eqref{eq:1.13} bounds the truck’s sequence variable within the feasible range.
+
+% Constraint~\eqref{eq:1.14} and Constraint~\eqref{eq:1.15} define the truck and drone routing decision variables as binary, indicating whether a vehicle travels between two nodes. Finally, Constraint~\eqref{eq:1.16} defines the drone assignment decision variables, indicating whether a drone is assigned to serve a specific customer.
+
+% \subsection{Model 2: Energy-based Battery Swapping (PDSTSP-E)}
+% \label{sec:pdstsp_e}
+
+% Building upon the previously defined sets and routing structure, the energy model introduces additional parameters to capture the drone's power consumption and endurance constraint. Specifically, $\alpha$ denotes the power (in kW) consumed per kilogram of battery and payload weight, while $\beta$ represents the baseline power required to maintain hover without any payload. The battery energy density is given by $\xi_i$, and $E$ defines the maximum allowable energy consumption for a drone. Meanwhile, the remaining parameters and decision variables are exactly the same as in the Model 1 (PDSTSP-T).
+
+
+% \begin{align}
+% \text{min} \quad & z \label{eq:17} \\
+% \text{s.t.} \quad 
+% & z \geq \sum_{i \in N_0} \sum_{j \in N_+ \setminus \{i\}} \tau_{ij} x_{ij} \label{eq:18} \\
+% & z \geq \sum_{i \in C_d} (\tau'_{0i} + \tau'_{ic+1}) y_{iv} + \tau_{\text{swap}} t_v, \quad \forall v \in V \label{eq:19} \\
+% & \sum_{i \in C_d} \frac{\alpha(\tau'_{0i} m_i) + 2\beta \tau'_{0i}}{1 - (\alpha/\xi)\tau'_{0i}} s_{ikv} \leq E, \quad \forall k \in S, \forall v \in V \label{eq:20} \\
+% & \sum_{i \in N_0, i \neq j} x_{ij} + \sum_{v \in V} y_{jv} = 1, \quad \forall j \in C \label{eq:21} \\
+% & \sum_{j \in N_+} x_{0j} = 1 \label{eq:22} \\
+% & \sum_{i \in N_0} x_{ic+1} = 1 \label{eq:23} \\
+% & \sum_{i \in N_0, i \neq j} x_{ij} = \sum_{k \in N_+, k \neq j} x_{jk}, \quad \forall j \in C \label{eq:24} \\
+% & t_v \geq k - M(1 - s_{ikv}), \quad \forall i \in C_d, \forall k \in S, \forall v \in V \label{eq:25} \\
+% & y_{iv} = \sum_{k \in S} s_{ikv}, \quad \forall i \in C, \forall v \in V \label{eq:26} \\
+% & \sum_{i \in C_d} s_{ikv} \leq \sum_{i \in C_d} s_{i,k-1,v}, \quad \forall v \in V, \forall k \in S \setminus \{1\} \label{eq:27} \\
+% & u_i - u_j + 1 \leq (c+2)(1 - x_{ij}), \quad \forall i \in C, \forall j \in N_+ \setminus \{i\} \label{eq:28} \\
+% & 1 \leq u_i \leq c+2, \quad \forall i \in N_+ \label{eq:29} \\
+% & x_{ij} \in \{0,1\}, \quad \forall i \in N_0, \forall j \in N_+ \setminus \{i\} \label{eq:30} \\
+% & y_{iv} \in \{0,1\}, \quad \forall i \in C_d, \forall v \in V \label{eq:31} \\
+% & s_{ikv} \in \{0,1\}, \quad \forall i \in C_d, \forall k \in S, \forall v \in V \label{eq:32}
+% \end{align}
+
+
+% The objective function minimizes the latest return time to the depot for both the truck and the drones.
+
+% Constraint~\eqref{eq:18} ensures that the total travel time of the truck is accounted for in the objective function, while Constraint~\eqref{eq:19} ensures that the total travel time of drones, including the battery swap time, is also considered. Constraint~\eqref{eq:20} limits the total energy consumption of a drone in each swap session, accounting for payload, flight time, hovering, and battery characteristics.
+
+% To ensure proper customer service, Constraint~\eqref{eq:21} requires that each customer is visited exactly once, either by a truck or a drone. Constraint~\eqref{eq:22} requires the truck to depart exactly once, while Constraint~\eqref{eq:23} ensures that the truck returns to the depot exactly once.
+
+% Additional routing consistency is enforced by Constraint~\eqref{eq:24}, which ensures that if the truck enters a customer node, it must also leave that node. Constraint~\eqref{eq:25} ensures that the total number of swaps performed by a drone is at least equal to the highest index of any assigned swap session, while Constraint~\eqref{eq:26} determines the number of battery swapping sessions required based on the assignment of swaps. Constraint~\eqref{eq:27} enforces sequential swap consistency, ensuring that subsequent swap sessions are only operated if earlier ones have been assigned.
+
+% Constraint~\eqref{eq:28} eliminates subtours in the truck’s route by ensuring a valid sequence of customers visited, and Constraint~\eqref{eq:29} ensures that the truck sequence variable remains within valid bounds.
+
+% Constraint~\eqref{eq:30} and Constraint~\eqref{eq:31} define the truck routing decision variables and drone routing decision variables as binary, respectively, indicating whether a vehicle travels between two nodes. Finally, Constraint~\eqref{eq:32} defines the drone assignment decision variables as binary, indicating whether a drone serves a customer.
+
+
+The model uses the following parameters: $\tau_{\text{swap}}$ is the time required to swap a drone’s battery; $T$ is the maximum allowable flight time (endurance) for a drone; $\tau_{ij}$ and $\tau'_{ij}$ denote the travel times from node $i$ to node $j$ for the truck and the drone, respectively, where $i, j \in N$. $M$ is a sufficiently large constant used to relax constraints involving binary variables.
+
+The decision variables are defined as follows:
+\begin{itemize}
+    \item $x_{ij}$: equals $1$ if the truck travels directly from node $i$ to node $j$, 0 otherwise.
+    \item $y_{iv}$: equals $1$ if drone $v \in V$ serves customer $i \in C_d$, 0 otherwise.
+    \item $y^k_{iv}$: equals $1$ if drone $v$ serves customer $i$ during its $k$-th charge, 0 otherwise.
+    \item $t_v \in \mathbb{Z}_{\geq 0}$: denotes the total number of battery swaps for drone $v$.
+    \item $u_i \in \mathbb{Z}_{\geq 0}$: is a sequence variable indicating the position of node $i$ in the truck’s route, used for subtour elimination.
+\end{itemize}
+
+The objective function is represented by the variable $z \in \mathbb{R}_{\geq 0}$, which denotes the overall makespan of the delivery operation. It is defined as the maximum completion time among all UAV sorties and the truck route.
+
+\begin{align}
+\text{min} \quad & z \label{eq:milp_obj} \\
+\text{s.t.} \quad & z \geq \sum_{i \in N_0} \sum_{j \in N_+ \setminus \{i\}} \tau_{ij} x_{ij} \label{eq:milp_truck_makespan} \\
+& z \geq \sum_{i \in C_d} 2\tau'_{0i} y_{iv} + \tau_{swap}t_v, \quad \forall v \in V \label{eq:milp_drone_makespan} \\
+& \sum_{i\in C_d} 2\tau'_{0i} y^k_{iv} \leq T, \quad \forall k \in S, \quad \forall v \in V \label{eq:milp_endurance} \\
+& \sum_{i \in N_0, i \neq j} x_{ij} + \sum_{v \in V} y_{jv} = 1, \quad \forall j \in C \label{eq:milp_visit} \\
+& \sum_{j \in N_+} x_{0j} = 1 \label{eq:milp_truck_start} \\
+& \sum_{i \in N_0} x_{ic+1} = 1 \label{eq:milp_truck_end} \\
+& \sum_{i \in N_0, i \neq j} x_{ij} = \sum_{k \in N_+, k \neq j} x_{jk}, \quad \forall j \in C \label{eq:milp_flow} \\
+& t_v \geq \sum_{k \in S} (k - 1) y^k_{iv}, \quad \forall v \in V, \forall i \in C_d \label{eq:milp_sbc_tv} \\
+& y_{iv} = \sum_{k \in S} y^k_{iv}, \quad \forall i \in C, \forall v \in V \label{eq:milp_y_link} \\
+& \sum_{i \in C_d} y^k_{iv} \leq \sum_{i \in C_d} y^{k-1}_{iv}, \quad \forall v \in V, \forall k \in S \setminus \{1\} \label{eq:milp_session_order} \\
+& u_i - u_j + 1 \leq (c+2)(1 - x_{ij}), \quad \forall i \in C, \forall j \in N_+ \setminus \{i\} \label{eq:milp_mtz_1} \\
+& 1 \leq u_i \leq c+2, \quad \forall i \in N_+ \label{eq:milp_mtz_2} \\
+& x_{ij} \in \{0,1\}, \quad \forall i \in N_0, \forall j \in N_+ \setminus \{i\} \label{eq:milp_x_domain} \\
+& y_{iv} \in \{0,1\}, \quad \forall i \in C_d, \forall v \in V \label{eq:milp_y_domain} \\
+& y^k_{iv} \in \{0,1\}, \quad \forall i \in C_d, \forall k \in S, \forall v \in V \label{eq:milp_yk_domain} 
+% Symmetry Breaking Constraints
+% & t_v \geq \sum_{k \in S} (k - 1) y^k_{iv}, \quad \forall v \in V, \forall i \in C_d \label{eq:milp_sbc_tv} \\
+% & \sum_{i \in C_d} y_{iv} \geq \sum_{i \in C_d} y_{i, v+1}, \quad \forall v \in \{1, \dots, |V|-1\} \label{eq:milp_sbc_drone_order} \\
+% & \sum_{i \in C_d} \tau'_{0i} y_{iv} \geq \sum_{i \in C_d} \tau'_{0i} y_{i, v+1} - M (\sum_{i \in C_d} y_{iv} - \sum_{i \in C_d} y_{i, v+1}), \forall v \in \{1, \dots, |V|-1\} \label{eq:milp_sbc_dist_tie} \\
+% & \sum_{i \in C_d} \tau'_{0i} y^k_{iv} \leq \sum_{i \in C_d} \tau'_{0i} y^{k-1}_{iv} + M (\sum_{i \in C_d} y^{k-1}_{iv} - \sum_{i \in C_d} y^k_{iv}), \forall v \in V, \forall k \in S \setminus \{1\} \label{eq:milp_sbc_session_tie}
+\end{align}
+
+The objective function ~\eqref{eq:milp_obj} minimizes the overall makespan $z$. Constraints~\eqref{eq:milp_truck_makespan} and~\eqref{eq:milp_drone_makespan} ensure that the objective variable $z$ accounts for the maximum completion time across all vehicles. Specifically, constraints \eqref{eq:milp_drone_makespan} include the sum of drone sortie durations and the total time consumed by battery replacement procedures.
+
+Constraints~\eqref{eq:milp_endurance} enforces the drone's flight endurance limit $T$, ensuring the total flight time within any single session $k$ does not exceed the battery capacity. Constraints~\eqref{eq:milp_visit} guarantees that every customer is visited exactly once, either by the truck or by a drone. Constraints~\eqref{eq:milp_truck_start}, \eqref{eq:milp_truck_end}, and \eqref{eq:milp_flow} manage the truck's routing: ensuring it starts and ends at the depot and maintaining flow conservation at each customer node.
+
+Constraints~\eqref{eq:milp_sbc_tv}, \eqref{eq:milp_y_link}, and \eqref{eq:milp_session_order} manage drone operations and battery swaps. Constraints~\eqref{eq:milp_sbc_tv} link the number of swaps $t_v$ to the session index $k$. Specifically, if a customer is served in session $k$, at least $k-1$ swaps must have occurred (since the first session requires no swap). Constraints~\eqref{eq:milp_y_link} link the session-specific variable $y^k_{iv}$ to the general assignment variable $y_{iv}$. Constraints~\eqref{eq:milp_session_order} act as symmetry-breaking constraints. They mandate that the number of customers assigned to $k^{th}$ battery cannot exceed that of $(k-1)^{th}$ battery, which inherently ensures that session $k$ can only be utilized if session $k-1$ is already active.
+
+Constraints~\eqref{eq:milp_mtz_1} eliminate subtours in the truck's route using the Miller-Tucker-Zemlin formulation. Constraints~\eqref{eq:milp_mtz_2}-\eqref{eq:milp_yk_domain} define the domains of the decision variables.
+
+% Finally, Constraints~\eqref{eq:milp_sbc_tv}-\eqref{eq:milp_sbc_session_tie} are Symmetry Breaking Constraints introduced to improve solver performance by eliminating symmetric solutions. Constraint~\eqref{eq:milp_sbc_tv} provides a tighter lower bound for $t_v$. Constraints~\eqref{eq:milp_sbc_drone_order} and \eqref{eq:milp_sbc_dist_tie} break symmetry among identical drones by ordering them based on workload (number of customers and total distance). Constraint~\eqref{eq:milp_sbc_session_tie} prioritizes earlier sessions for larger travel distances if the number of customers served is equal.
+
+
+
+\subsubsection{Model 2: Energy-based Battery Swapping}
+\label{sec:energy_model_math}
+
+% Building upon the previously defined sets and routing structure, the energy model introduces additional parameters to capture the drone's power consumption and endurance constraint. Specifically, $\alpha$ denotes the power (in kW) consumed per kilogram of battery and payload weight, while $\beta$ represents the baseline power required to maintain hover without any payload. The battery energy density is given by $\xi$, and $E$ defines the maximum allowable energy consumption for a drone. $m_i$ represents the weight of the package for customer $i$.
+
+% The mathematical formulation for PDSTSP-E is defined as follows:
+
+% \begin{align}
+% \text{min} \quad & z \label{eq:milp_energy_obj} \\
+% \text{s.t.} \quad & \sum_{i \in C_d} \frac{\alpha(\tau'_{0i} m_i) + 2\beta \tau'_{0i}}{1 - (\alpha/\xi)\tau'_{0i}} y^k_{iv} \leq E, \quad \forall k \in S, \forall v \in V \label{eq:milp_energy_limit} \\
+% & \text{Constraints } \eqref{eq:milp_truck_makespan}, \eqref{eq:milp_drone_makespan}, \text{ and } \eqref{eq:milp_visit}-\eqref{eq:milp_yk_domain} \label{eq:milp_energy_common}
+% \end{align}
+
+Building upon the previously defined routing structure, the energy model introduces additional parameters to accurately capture the drone's power consumption. Let $\alpha$ denote the power consumed per kilogram of battery and payload weight (in kW/kg), and $\beta$ represent the baseline power required for an empty drone. The battery energy density is given by $\xi$, while $m_i$ indicates the payload weight for customer $i$.
+
+Prior to formulating the model, we pre-calculate the total energy requirement $e_i$ for a drone to perform a round-trip sortie from the depot to customer $i \in C_d$ as follows:
+\begin{equation}
+    e_i = \frac{\alpha(\tau'_{0i}m_i) + 2\beta\tau'_{0i}}{1 - (\alpha/\xi)\tau'_{0i}} \label{eq:energy_consumption}
+\end{equation}
+\label{sec:energy_model_des}
+
+By utilizing this pre-calculated parameter, let $E$ define the maximum allowable battery energy limit. The mathematical formulation for \hyperref[sec:pdstsp_e]{PDSTSP-E} is defined as follows:
+
+\begin{align}
+\text{min} \quad & z \label{eq:milp_energy_obj} \\
+\text{s.t.} \quad & \sum_{i \in C_d} e_i y^k_{iv} \leq E, \quad \forall k \in S, \forall v \in V \label{eq:milp_energy_limit} \\
+& \text{Constraints } \eqref{eq:milp_truck_makespan}, \eqref{eq:milp_drone_makespan}, \text{ and } \eqref{eq:milp_visit}\text{ - }\eqref{eq:milp_yk_domain} \label{eq:milp_energy_common}
+\end{align}
+
+The objective function~\eqref{eq:milp_energy_obj} minimizes the overall makespan.
+
+The key distinction of this model lies in Constraints~\eqref{eq:milp_energy_limit}, which replace the time-based endurance constraint~\eqref{eq:milp_endurance} of Model 1. These constraints limit the total energy consumption of a drone in each swap session $k$, strictly preventing it from exceeding the battery capacity $E$. The energy calculation explicitly accounts for the variable power consumption induced by the payload weight ($m_i$) and the travel duration ($\tau'_{0i}$), as well as the hovering and battery characteristics of the drone ( $\alpha$, $\beta$ and $\xi$).
+
+Constraint~\eqref{eq:milp_energy_common} states that all other constraints regarding truck and drone routing, flow conservation, swap logic ($t_v$ calculation) and subtour elimination that are identical to those defined in Model 1.
+
+\section{Exact Methods}
+\label{sec:exact_methods}
+
+To establish high-quality benchmarks and evaluate the performance of our proposed heuristic approach, we first develop exact optimization approaches based on MILP and CP.
+
+These exact methods serve to assess the performance of the heuristic method, which will be introduced in the next section. By comparing solutions against those obtained from exact models,  we can quantify the optimality gap, robustness, and scalability of the proposed method.
+
+\subsection{MILP Approach}
+\label{sec:milp_des}
+
+We formulate the problem as MILP in order to solve two variants ( \hyperref[sec:time_model_des]{PDSTSP-T} and \hyperref[sec:energy_model_des]{PDSTSP-E}) stated in Section \hyperref[sec:problem_description]{3}. 
+Because this method directly employs the aforementioned mathematical models (Section \hyperref[sec:model_formulation_math]{3.2}), the core logic and detailed constraints are not restated here.
+
+% \subsection{CP Approach}
+
+% The proposed CP model is implemented using the \textit{Google OR-Tools CP-SAT} solver. A key advantage of this approach lies in the ability to exploit high-level global constraints that encapsulate complex problem substructures. Specifically, we employ the \texttt{Circuit} constraint to enforce the connectivity of the truck's route, eliminating the need for complex subtour elimination constraints found in MILP. Additionally, \texttt{NoOverlap} constraints are used to manage the scheduling of drone missions, ensuring that tasks assigned to the same drone do not conflict in time.\\
+
+
+
+% \noindent \textbf{Parameters and Decision Variables} 
+
+% For consistency, we adopt the same notation for sets ($N, C_d, V$), parameters ($\tau_{ij}$, $\tau'_{ij}$, $\tau_{swap}$, $E$, $T$ ) and decision variables ($z$, $x_{ij}$, $y_{iv}$) as defined in the mathematical formulations (\hyperref[sec:pdstsp_t]{PDSTSP-T} and \hyperref[sec:pdstsp_e]{PDSTSP-E}). Additionally, to enable the modeling of scheduling and resource constraints, we introduce the following auxiliary variables:
+
+% \begin{itemize}
+
+%     \item $s_{iv} \in \{0, 1\}$: 1 if drone $v$ performs a battery swap before serving node $i$, 0 otherwise.
+%     \item $itv_{iv}$: An optional interval variable representing the mission of drone $v$ at node $i$.
+%     \item $u_{ijv} \in \{0, 1\}$: 1 if drone $v$ performs mission $j$ immediately after mission $i$, 0 otherwise.
+%     \item $order_{iv}$: An integer variable indicating the visit order of node $i$ in the route of drone $v$.
+%     \item $f_{iv}$: A variable representing remaining available flight time of drone $v$ before serving node $i$
+% \end{itemize}
+
+% \subsubsection{Time-based Model}
+% \label{sec:time-model}
+
+% This model assumes a constant energy consumption rate, where $T$ represents the maximum flight duration (endurance) of a drone. The decision of whether to perform a battery swap is strictly governed by the available flight time relative to the sortie duration. The problem is formulated as a Constraint Programming (CP) model as follows:
+
+% \begin{align}
+%     \text{min} \quad & z \label{eq:tm_obj} \\
+%     \text{s.t.} \quad 
+%     % Makespan
+%     & z \ge \sum_{i \in N} \sum_{\substack{j \in N\\ i \ne j}} \tau_{ij} x_{ij} \label{eq:tm_truck_makespan} \\[3pt]
+%     & z \ge \text{endOf}(itv_{iv}) \Leftarrow y_{iv}=1, && \forall i \in C_d, v \in V \label{eq:tm_drone_makespan} \\[3pt]
+%     % Truck Routing
+%     & \text{Circuit}(x_{ij},\; i,j \in N) \label{eq:tm_truck_circuit} \\[3pt]
+%     & x_{00} = 0 \label{eq:tm_depot_loop} \\[3pt]
+%     & \sum_{i \in N,\, i \neq j} x_{ij} + \sum_{v \in V} y_{jv} = 1, && \forall j \in N \setminus \{0\} \label{eq:tm_assignment} \\[6pt]
+%     % Drone Scheduling & Logic
+%     & \text{presenceOf}(itv_{iv}) \Leftrightarrow y_{iv} = 1, && \forall i \in C_d, v \in V \label{eq:tm_presence} \\[2pt]
+%     & s_{iv} \le y_{iv}, && \forall i \in C_d, v \in V \label{eq:tm_swap_logic} \\[2pt]
+%     & \text{sizeOf}(itv_{iv}) = (\tau'_{0i} + \tau'_{i0}) + \tau_{swap} \cdot s_{iv}, && \forall i \in C_d, v \in V \label{eq:tm_size} \\[2pt]
+%     & \text{startOf}(itv_{iv}) + \text{sizeOf}(itv_{iv}) = \text{endOf}(itv_{iv}), && \forall i \in C_d, v \in V \label{eq:tm_time_consistency} \\[2pt]
+%     & \text{NoOverlap}(\{itv_{iv}\}_{i \in C_d}), && \forall v \in V \label{eq:tm_no_overlap} \\[2pt]
+%     & \text{endOf}(itv_{iv}) \le \text{startOf}(itv_{jv}) \Leftarrow u_{ijv} = 1, && \forall i,j \in C_d, i \neq j, v \in V \label{eq:tm_precedence} \\[2pt]
+%     & order_{jv} = order_{iv} + 1 \Leftarrow u_{ijv}=1, && \forall i,j \in C_d, i \neq j, v \in V \label{eq:tm_order} \\[2pt]
+%     & \sum_{i \in C_d, i\ne j} u_{ijv} \le y_{jv}, \quad \sum_{k \in C_d, k \neq j} u_{jkv} \le y_{jv}, && \forall j \in C_d, v \in V \label{eq:tm_flow_balance} \\[6pt]
+%     % Time Management
+%     & s_{iv} \le \sum_{k \in C_d, k \neq i} u_{kiv}, && \forall i \in C_d, v \in V \label{eq:tm_first_node} \\[2pt]
+%     & f_{iv} = T \Leftarrow (s_{iv} = 1 \lor \sum_{k \in C_d, k \neq i} u_{kiv} = 0), && \forall i \in C_d, v \in V \label{eq:tm_reset} \\[2pt]
+%     & f_{jv} = f_{iv} - (\tau'_{0i}+\tau'_{i0}) \Leftarrow (u_{ijv}=1 \land s_{jv}=0), && \forall i,j \in C_d, i \neq j, v \in V \label{eq:tm_balance} \\[2pt]
+%     & f_{iv} \ge \tau'_{0i}+\tau'_{i0} \Leftarrow (y_{iv}=1), && \forall i \in C_d, v \in V \label{eq:tm_feasibility} \\[6pt]
+%     % Symmetry Breaking
+%     & \sum_{i \in C_d} y_{iv} \ge \sum_{i \in C_d} y_{i, v+1}, && \forall v \in \{1, \dots, |V|-1\} \label{eq:tm_sbc}
+% \end{align}
+
+% Constraints \eqref{eq:tm_truck_makespan} and \eqref{eq:tm_drone_makespan} ensure that the objective value $z$ must simultaneously be no smaller than the truck's total travel time and the completion time of every mission served by drones.
+
+% Constraint \eqref{eq:tm_truck_circuit} ensures that the truck performs a single valid tour, while Constraint \eqref{eq:tm_depot_loop} explicitly mandates the truck's departure by prohibiting a self-loop at the depot node. Constraints \eqref{eq:tm_assignment} guarantee that each customer is served exactly once by either the truck or one of the drones.
+
+% Constraints \eqref{eq:tm_presence} ensure that the optional interval variable is active if and only if its corresponding node is served by a drone. Constraint \eqref{eq:tm_swap_logic} explicitly links the battery swap decision to the service assignment, ensuring that a swap can only occur at a node if it is actually visited by the drone. Constraints \eqref{eq:tm_size} define the mission duration (including swapping time), while Constraints \eqref{eq:tm_time_consistency} link start and end times. The \texttt{NoOverlap} constraints \eqref{eq:tm_no_overlap} ensure that each drone executes its assigned tasks sequentially without temporal conflicts.
+
+% Precedence between drone missions is enforced in Constraints \eqref{eq:tm_precedence}, which indicate that a predecessor mission must be completed before its immediate successor mission can commence. Constraints \eqref{eq:tm_order} establish the sequential ordering of missions by ensuring that the rank of a successor mission increments by one relative to its predecessor. Constraints \eqref{eq:tm_flow_balance} guarantee that the sequencing variable is active only when the corresponding node is actually assigned to the drone, while simultaneously ensuring that each mission has at most one predecessor and one successor in the sequence.
+
+% The flight time logic is managed by Constraints \eqref{eq:tm_first_node}-\eqref{eq:tm_feasibility}. Constraint \eqref{eq:tm_first_node} ensures that the initial full battery capacity provided at the depot is not categorized as a swap operation. This constraint allows the model to strictly track mid-route battery replacements, thereby guaranteeing an accurate count of total battery swaps. Constraints \eqref{eq:tm_reset} reset the available flight time to the maximum limit $T$ if a swap is performed or if the node is the first mission. Constraints \eqref{eq:tm_balance} calculate the remaining flight time by subtracting the duration of the previous trip if no swap occurred. Constraints \eqref{eq:tm_feasibility} ensure the remaining flight time is sufficient for the round-trip to customer $i$.
+
+% Finally, Constraint \eqref{eq:tm_sbc} is a symmetry breaking constraint that imposes a workload ordering on the identical drones. It ensures that drones with lower indices serve a number of customers greater than or equal to that of drones with higher indices, thereby eliminating redundant permutations of the same solution.
+% \subsubsection{Energy-based Model}
+% \label{sec:energy-model}
+
+% This model replaces the flight time tracking with explicit battery energy monitoring to ensure operational feasibility. We introduce the parameter $e_i$, which represents the energy consumption required for a drone to serve customer $i$ (including the round-trip flight from the depot). This parameter is derived consistent with the energy consumption logic presented in the \hyperref[sec:pdstsp_e]{PDSTSP-E} model:
+% \begin{equation*}
+%     e_i = \frac{\alpha(\tau'_{0i}m_i) + 2\beta\tau'_{0i}}{1 - (\alpha/\xi)\tau'_{0i}}
+% \end{equation*}
+% \noindent where $m_i$ is the payload weight of customer $i$, and $\alpha, \beta, \xi$ are drone-specific energy coefficients. Additionally, we define the auxiliary variable:
+% \begin{itemize}
+%     \item $b_{iv}$: A variable representing the remaining battery level of drone $v$ upon arriving at node $i$.
+% \end{itemize}
+
+% The decision of whether a battery swapping session occurs is based on the remaining energy levels ($b_{iv}$) relative to the consumption $e_i$ and the battery capacity $E$. The formulation is as follows:
+
+% \begin{align}
+%     \text{min} \quad & z\\
+%     \text{s.t.} \quad 
+%     & \text{Constraints } \eqref{eq:tm_truck_makespan}-\eqref{eq:tm_first_node}, \eqref{eq:tm_sbc} \label{eq:em_common} \\
+%     & b_{iv} = E \Leftarrow (s_{iv} = 1 \lor \sum_{k \in C_d, k \neq i} u_{kiv} = 0), && \forall i \in C_d, v \in V \label{eq:em_batt_reset} \\[2pt]
+%     & b_{jv} = b_{iv} - e_i \Leftarrow (u_{ijv} = 1 \land s_{jv} = 0), && \forall i, j \in C_d, i \neq j, v \in V \label{eq:em_batt_flow} \\[2pt]
+%     & b_{iv} \ge e_i \Leftarrow (y_{iv} = 1), && \forall i \in C_d, v \in V \label{eq:em_batt_feas}
+% \end{align}
+
+% The energy-based model inherits the core routing, scheduling, swap logic, and symmetry breaking constraints from the time-based model, as indicated in Constraint \eqref{eq:em_common}. The key difference lies in the battery management:
+
+% Constraints \eqref{eq:em_batt_reset} guarantee that the drone's battery is reset to full capacity $E$ if a swap occurs or if the node is the first mission in the sequence. If no swap occurs, energy is carried over from the previous mission as defined in Constraints \eqref{eq:em_batt_flow}. Finally, Constraints \eqref{eq:em_batt_feas} ensure that the drone possesses sufficient energy to complete the mission at node $i$.
+
+
+
+% New form
+
+\subsection{CP Approach}
+
+To solve the CP formulation, we leverage the \textit{Google OR-Tools CP-SAT} solver. This allows us to efficiently model the truck's route using the \texttt{Circuit} constraint and synchronize drone missions through \texttt{NoOverlap} constraints, ensuring conflict-free scheduling.
+\\
+
+\noindent \textbf{Parameters and Decision Variables} 
+
+For consistency, we adopt the same notation for sets ($N, C_d, V$), parameters ($\tau_{ij}$, $\tau'_{ij}$, $\tau_{swap}$, $E$, $T$ ) and decision variables ($z$, $x_{ij}$, $y_{iv}$) as defined in the mathematical formulations (\hyperref[sec:time_model_math]{Time-based Model} and \hyperref[sec:energy_model_math]{Energy-based Model}). Additionally, to enable the modeling of scheduling and resource constraints, we introduce the following auxiliary variables:
+
+\begin{itemize}
+    \item $s_{iv} \in \{0, 1\}$: 1 if drone $v$ performs a battery swap before serving node $i$, 0 otherwise.
+    \item $itv_{iv}$: An optional interval variable representing the mission of drone $v$ at node $i$.
+    \item $u_{ijv} \in \{0, 1\}$: 1 if drone $v$ performs mission $j$ immediately after mission $i$, 0 otherwise.
+    \item $order_{iv}$: An integer variable indicating the visit order of node $i$ in the route of drone $v$.
+    % \item $f_{iv}$ / $b_{iv}$: A  variable representing the remaining available flight time (or battery energy) of drone $v$ before serving node $i$.
+\end{itemize} 
+
+% =========================================================================
+% SECTION 1: BASELINE 3-INDEX
+% =========================================================================
+\subsubsection{The Standard Vehicle-indexed Formulation}
+\label{sec:cp_base_model}
+
+We first present the vehicle-indexed formulations to solve two distinct variants mentioned in Section \hyperref[sec:problem_description]{3}.
+
+% \hyperref[sec:time_model_des]{PDSTSP-T} and \hyperref[sec:energy_model_des]{PDSTSP-E}
+
+\paragraph{Time-based Formulation} 
+Designed to solve the \hyperref[sec:time_model_des]{PDSTSP-T} variant, this formulation introduces $f_{iv}$ to represent the remaining allowable flight time of drone $v$. 
+
+\begin{align}
+    \text{min} \quad & z \label{eq:tm_obj} \\
+    \text{s.t.} \quad 
+    % Makespan
+    & z \ge \sum_{i \in N} \sum_{\substack{j \in N\\ i \ne j}} \tau_{ij} x_{ij} \label{eq:tm_truck_makespan} \\[3pt]
+    & y_{iv}=1 \Rightarrow z \ge \text{endOf}(itv_{iv}), && \forall i \in C_d, v \in V \label{eq:tm_drone_makespan} \\[3pt]
+    % Truck Routing
+    & \text{Circuit}(x_{ij},\; i,j \in N) \label{eq:tm_truck_circuit} \\[3pt]
+    & x_{00} = 0 \label{eq:tm_depot_loop} \\[3pt]
+    & \sum_{i \in N,\, i \neq j} x_{ij} + \sum_{v \in V} y_{jv} = 1, && \forall j \in N \setminus \{0\} \label{eq:tm_assignment} \\[6pt]
+    % Drone Scheduling & Logic
+    & \text{presenceOf}(itv_{iv}) \Leftrightarrow y_{iv} = 1, && \forall i \in C_d, v \in V \label{eq:tm_presence} \\[2pt]
+    & s_{iv} \le y_{iv}, && \forall i \in C_d, v \in V \label{eq:tm_swap_logic} \\[2pt]
+    & \text{sizeOf}(itv_{iv}) = (\tau'_{0i} + \tau'_{i0}) + \tau_{swap} \cdot s_{iv}, && \forall i \in C_d, v \in V \label{eq:tm_size} \\[2pt]
+    & \text{startOf}(itv_{iv}) + \text{sizeOf}(itv_{iv}) = \text{endOf}(itv_{iv}), && \forall i \in C_d, v \in V \label{eq:tm_time_consistency} \\[2pt]
+    & \text{NoOverlap}(\{itv_{iv}\}_{i \in C_d}), && \forall v \in V \label{eq:tm_no_overlap} \\[2pt]
+    & u_{ijv} = 1 \Rightarrow \text{endOf}(itv_{iv}) = \text{startOf}(itv_{jv}), && \forall i,j \in C_d, i \neq j, v \in V \label{eq:tm_precedence} \\[2pt]
+    % & u_{ijv}=1 \Rightarrow order_{jv} = order_{iv} + 1, && \forall i,j \in C_d, i \neq j, v \in V \label{eq:tm_order} \\[2pt]
+    &\sum_{i \in C_d, i \neq j} u_{ijv} \le y_{jv}, && \forall j \in C_d, v \in V \label{eq:tm_flow_in} \\
+    &\sum_{k \in C_d, k \neq j} u_{jkv} \le y_{jv}, && \forall j \in C_d, v \in V \label{eq:tm_flow_out} \\[2pt]
+    % Time Management
+    & \left( y_{iv} = 1 \land \sum_{k \in C_d, k \neq i} u_{kiv} = 0 \right) \Rightarrow (start_{iv} = 0 \land s_{iv} = 0), && \forall i \in  C_d, v \in V \label{eq:tm_start_init} \\[2pt]
+    & \Big(s_{iv} = 1 \lor \sum_{k \in C_d, k \neq i} u_{kiv} = 0 \Big) \Rightarrow f_{iv} = T, && \forall i \in C_d, v \in V \label{eq:tm_reset} \\[2pt]
+    & (u_{ijv}=1 \land s_{jv}=0) \Rightarrow f_{jv} = f_{iv} - (\tau'_{0i}+\tau'_{i0}), && \forall i,j \in C_d, i \neq j, v \in V \label{eq:tm_balance} \\[2pt]
+    & y_{iv}=1 \Rightarrow f_{iv} \ge \tau'_{0i}+\tau'_{i0}, && \forall i \in C_d, v \in V \label{eq:tm_feasibility}
+\end{align}
+
+Constraints \eqref{eq:tm_truck_makespan} and \eqref{eq:tm_drone_makespan} ensure that the objective value $z$ must simultaneously be no smaller than the truck's total travel time and the completion time of every mission served by drones.
+
+Constraint \eqref{eq:tm_truck_circuit} ensures that the truck performs a single valid tour, while Constraint \eqref{eq:tm_depot_loop} explicitly mandates the truck's departure by prohibiting a self-loop at the depot node. Constraints \eqref{eq:tm_assignment} guarantee that each customer is served exactly once by either the truck or one of the drones.
+
+Constraints \eqref{eq:tm_presence} ensure that the optional interval variable is active if and only if its corresponding node is served by a drone. Constraint \eqref{eq:tm_swap_logic} explicitly links the battery swap decision to the service assignment, ensuring that a swap can only occur at a node if it is actually visited by the drone. Constraints \eqref{eq:tm_size} define the mission duration (including swapping time), while Constraints \eqref{eq:tm_time_consistency} link start and end times. The \texttt{NoOverlap} constraints \eqref{eq:tm_no_overlap} ensure that each drone executes its assigned tasks sequentially without temporal conflicts.
+
+Precedence between drone missions is enforced in Constraints \eqref{eq:tm_precedence}, which indicate that a predecessor mission must be completed before its immediate successor mission can commence. Constraints \eqref{eq:tm_flow_in} and \eqref{eq:tm_flow_out} guarantee that the sequencing variable is active only when the corresponding node is actually assigned to the drone, while simultaneously ensuring that each mission has at most one predecessor and one successor in the sequence.
+
+The flight time logic is managed by Constraints \eqref{eq:tm_start_init}-\eqref{eq:tm_feasibility}. Constraint \eqref{eq:tm_start_init} initializes the state for the first task of each drone's schedule. It ensures that any task starting directly from the depot begins at time zero and does not require a battery swap, as the drone is assumed to depart with a full charge. This constraint allows the model to strictly track mid-route battery replacements, thereby guaranteeing an accurate count of total battery swaps. Constraints \eqref{eq:tm_reset} reset the available flight time to the maximum limit $T$ if a swap is performed or if the node is the first mission. Constraints \eqref{eq:tm_balance} calculate the remaining flight time by subtracting the duration of the previous trip if no swap occurred. Constraints \eqref{eq:tm_feasibility} ensure the remaining flight time is sufficient for the round-trip to customer $i$.
+
+\paragraph{Energy-based Formulation} 
+Designed to solve the \hyperref[sec:energy_model_des]{PDSTSP-E} variant, this formulation utilizes the pre-calculated energy consumption $e_i$ established in Section \hyperref[sec:energy_model_des]{ 3.2.2}. Furthermore, it introduces $b_{iv}$ to explicitly track the remaining battery energy of drone $v$. Therefore, the formulation is:
+
+\begin{align}
+    \text{min} \quad & z \label{eq:en_obj} \\
+    \text{s.t.} \quad 
+    & \text{Constraints } \eqref{eq:tm_truck_makespan} \text{ - }\eqref{eq:tm_start_init} \label{eq:cp_en_common}\\
+    & \Big(s_{iv} = 1 \lor \sum_{k \in C_d, k \neq i} u_{kiv} = 0\Big) \Rightarrow b_{iv} = E, && \forall i \in C_d, v \in V \label{eq:em_batt_reset} \\
+    & (u_{ijv} = 1 \land s_{jv} = 0) \Rightarrow b_{jv} = b_{iv} - e_i, && \forall i, j \in C_d, i \neq j, v \in V \label{eq:em_batt_flow} \\
+    & y_{iv} = 1 \Rightarrow b_{iv} \ge e_i, && \forall i \in C_d, v \in V \label{eq:em_batt_feas}
+\end{align}
+ 
+
+The objective function \eqref{eq:en_obj} minimizes the overall makespan $z$. While the energy-based model retains the core routing, scheduling, and swap logic of the time-based formulation (captured in Constraints \eqref{eq:cp_en_common}), its primary distinction lies in the explicit tracking of battery energy constraints:
+
+Constraints \eqref{eq:em_batt_reset} guarantee that the drone's battery is reset to full capacity $E$ if a swap occurs or if the node is the first mission in the sequence. If no swap occurs, the available energy is carried over from the previous mission and reduced by the exact consumption $e_i$, as defined in Constraints \eqref{eq:em_batt_flow}. Finally, Constraints \eqref{eq:em_batt_feas} ensure that the drone possesses sufficient energy to complete the specific mission at node $i$.
+
+% =========================================================================
+% SECTION 2: 3 IDEAS FOR 3-INDEX
+% =========================================================================
+\subsubsection{Valid Inequalities for the Vehicle-indexed Formulation}
+\label{sec:cp_valid_ineq}
+
+Although the standard formulation accurately models the operational constraints, it suffers from weak initial lower bounds and a highly symmetric search space due to redundant customer visit permutations. To mitigate these computational bottlenecks and accelerate the convergence of the CP-SAT solver, we propose three valid inequalities to tighten the formulation:
+
+% \noindent 
+\begin{itemize}
+    \item \textit{Drone workload lower bound:} 
+    To enable solver to prune redundant branches with weak makespan bounds, we introduce a valid inequality based on the global drone workload. Specifically, this constraint dictates that the cumulative operational time available to the fleet (the makespan scaled by the fleet size) must be greater than or equal to the aggregate time required for all drone sorties, inclusive of both flight and battery replenishment durations.
+\begin{equation}
+    |V| \cdot z \ge \sum_{v \in V} \sum_{i \in C_d} \Big( (\tau'_{0i} + \tau'_{i0}) y_{iv} + \tau_{swap} s_{iv} \Big)
+\end{equation}
+
+    \item \textit{Global capacity bound:} To prevent the solver from assigning a dense cluster of customers without scheduling adequate battery replenishments, we establish a global capacity limitation. The core logic dictates that the total flight capacity injected into the system derived from the number of drones utilized plus the total number of mid-route battery swaps must be sufficient to cover the cumulative consumption of all served missions. For the time-based model, this bound is expressed as:
+\begin{equation}
+    \Bigg( \sum_{v \in V} \sum_{i \in C_d} s_{iv} + \sum_{v \in V} \sum_{i \in C_d} \Big(y_{iv} - \sum_{k \in C_d, k \neq i} u_{kiv} \Big) \Bigg) T \ge \sum_{v \in V} \sum_{i \in C_d} (\tau'_{0i} + \tau'_{i0}) y_{iv}
+\end{equation}
+\textit{Note: For the energy-based model, $T$ is replaced by the battery capacity $E$, and $(\tau'_{0i} + \tau'_{i0})$ is replaced by $e_i$.}
+
+    \item \textit{Customer order symmetry breaking:} Since the total cost of consecutive sorties within a single battery cycle is independent to their execution order, alternative sequences will generate symmetric, redundant permutations. To eliminate this symmetry, we enforce a lexicographical constraint: unless a battery swap is explicitly performed between two consecutive missions, the drone must serve customers in strictly ascending order of their IDs.
+\begin{equation}
+    u_{ijv} \le s_{jv}, \quad \forall i, j \in C_d, i > j, v \in V
+\end{equation}
+
+\end{itemize}
+% =========================================================================
+% SECTION 3: 2-INDEX ANONYMOUS MODEL
+% =========================================================================
+\subsubsection{The Proposed Anonymous Routing Formulation}
+\label{sec:cp_anonymous}
+
+Despite the inclusion of the aforementioned valid inequalities, the vehicle-indexed formulation remains computationally burdened by the explicit assignment of tasks to specific, homogeneous drones (denoted by the index $v$). This configuration inherently induces \textit{fleet symmetry}: interchanging the entire route of one drone with another yields an identical makespan, yet forces the exact solver to evaluate $O(|V|!)$ redundant branches.
+
+To mitigate this computational bottleneck and tighten the search space, we propose an \textbf{Anonymous Routing Formulation}. By eliminating the vehicle index $v$, the decision logic shifts from explicitly assigning customers to specific drones toward generating valid, anonymous sequences of drone sorties. Consequently, the decision variables are consolidated into binary routing indicators ($y_i, u_{ij}, s_i$) and continuous/integer state variables ($start_i, end_i, size_i$, alongside $f_i$ or $b_i$ depending on the variant). 
+
+\paragraph{Time-based Formulation} 
+Addressing the \hyperref[sec:time_model_des]{PDSTSP-T} variant under this anonymous framework, we define the temporal states ($start_i, end_i, size_i$) and track the remaining allowable flight time ($f_i$) using the following constraints:
+
+\begin{align}
+    \text{min} \quad & z \label{eq:am_obj} \\
+    \text{s.t.} \quad 
+    % Makespan & Truck
+    & z \ge \sum_{i \in N} \sum_{\substack{j \in N\\ i \ne j}} \tau_{ij} x_{ij} \label{eq:am_truck_makespan} \\[3pt]
+    & y_{i}=1 \Rightarrow z \ge end_{i}, && \forall i \in C_d \label{eq:am_drone_makespan} \\[3pt]
+    & \text{Circuit}(x_{ij},\; i,j \in N), \quad x_{00} = 0 \label{eq:am_truck_circuit} \\[3pt]
+    & \sum_{\substack{h \in N\\ h \neq i}} x_{hi} + y_{i} = 1, && \forall i \in C_d \label{eq:am_assignment} \\[6pt]
+    % Drone Temporal Logic
+    & y_{i}=0 \Rightarrow \big(size_i = 0 \land start_i = 0 \land end_i = 0 \land f_i = 0 \big), && \forall i \in C_d \label{eq:am_not_served} \\[2pt]
+    & s_{i} \le y_{i}, && \forall i \in C_d \label{eq:am_swap_logic} \\[2pt]
+    & y_{i}=1 \Rightarrow size_{i} = (\tau'_{0i} + \tau'_{i0}) + \tau_{swap} \cdot s_{i}, && \forall i \in C_d \label{eq:am_size} \\[2pt]
+    & y_{i}=1 \Rightarrow start_{i} + size_{i} = end_{i}, && \forall i \in C_d \label{eq:am_time_consistency} \\[6pt]
+    % Anonymous Flow & Fleet Size
+    & \sum_{i \in C_d} \Big( y_i - \sum_{k \in C_d, k \neq i} u_{ki} \Big) \le |V| \label{eq:am_fleet_size} \\[2pt]
+    &\sum_{i \in C_d, i \neq j} u_{ij} \le y_{i}, && \forall j \in C_d \label{eq:am_flow_in} \\
+    &\sum_{k \in C_d, j \neq k} u_{jk} \le y_{j}, && \forall j \in C_d \label{eq:am_flow_out} \\[2pt]
+    & u_{ij} = 1 \Rightarrow start_{j} = end_{i}, && \forall i,j \in C_d, i \neq j \label{eq:am_precedence} \\[6pt]
+    % Flight Time Management
+    & (y_{i}=1 \land \sum_{k \in C_d, k \neq i} u_{ki} = 0) \Rightarrow (start_i = 0 \land s_i = 0), && \forall i \in C_d \label{eq:am_first_node_init} \\[2pt]
+    & \Big(s_{i} = 1 \lor \sum_{k \in C_d, k \neq i} u_{ki} = 0 \Big) \Rightarrow f_{i} = T, && \forall i \in C_d \label{eq:am_reset} \\[2pt]
+    & (y_i=1 \land y_j=1 \land u_{ij}=1 \land s_{j}=0) \Rightarrow f_{j} = f_{i} - (\tau'_{0i}+\tau'_{i0}), && \forall i,j \in C_d, i \neq j \label{eq:am_balance} \\[2pt]
+    & y_{i}=1 \Rightarrow f_{i} \ge \tau'_{0i}+\tau'_{i0}, && \forall i \in C_d \label{eq:am_feasibility}
+\end{align}
+
+Constraints \eqref{eq:am_truck_makespan}-\eqref{eq:am_assignment} define the makespan objective and truck routing, mirroring the vehicle-indexed model. Constraints \eqref{eq:am_not_served}-\eqref{eq:am_time_consistency} manage drone temporal states, nullifying variables for unassigned nodes and calculating the precise duration for active assignments. Constraint \eqref{eq:am_fleet_size} restricts the maximum fleet size by implicitly counting nodes without predecessors as newly launched sorties. Constraints \eqref{eq:am_flow_in} and \eqref{eq:am_flow_out} ensure that each scheduled task has at most one preceding and one succeeding node, while Constraint \eqref{eq:am_precedence} enforces their strict chronological order, ensuring a task starts only after its predecessor finishes. Finally, Constraints \eqref{eq:am_first_node_init}-\eqref{eq:am_feasibility} initialize the chains and dynamically track the available flight time $f_i$ across consecutive missions.
+
+\paragraph{Energy-based Model} In order to solve the \hyperref[sec:energy_model_des]{PDSTSP-E}, similar to the 3-index formulation, the explicit flight time is replaced by battery energy variables ($b_i$). Additionally, the capacity $T$ is substituted with $E$, and the flight duration is replaced by the energy consumption $e_i$. The endurance constraints \eqref{eq:am_reset}-\eqref{eq:am_feasibility} are accordingly reformulated as:
+
+\begin{align}
+    & \Big(s_{i} = 1 \lor \sum_{k \in C_d, k \neq i} u_{ki} = 0 \Big) \Rightarrow b_{i} = E, && \forall i \in C_d \label{eq:am_batt_reset} \\[2pt]
+    & (y_i=1 \land y_j=1 \land u_{ij}=1 \land s_{j}=0) \Rightarrow b_{j} = b_{i} - e_i, && \forall i,j \in C_d, i \neq j \label{eq:am_batt_balance} \\[2pt]
+    & y_{i}=1 \Rightarrow b_{i} \ge e_i, && \forall i \in C_d \label{eq:am_batt_feasibility}
+\end{align}
+
+Constraint \eqref{eq:am_batt_reset} restores the battery to full capacity $E$ at the depot departure or after a mid-route swap. Otherwise, Constraint \eqref{eq:am_batt_balance} deducts the exact consumed energy $e_i$ from the preceding mission, while Constraint \eqref{eq:am_batt_feasibility} guarantees sufficient energy for the current task.
+
+% =========================================================================
+% SECTION 4: ENHANCING 2-INDEX
+% =========================================================================
+\subsubsection{Enhancing the Anonymous Formulation}
+\label{sec:cp_enhancing_anonymous}
+
+To maximize the computational efficiency of the proposed anonymous formulation, we adapt the valid inequalities previously introduced in Section~\ref{sec:cp_valid_ineq}. Remarkably, mapping these enhancements to the 2-index model yields even more concise expressions. By simply dropping the vehicle index $v$, the \textit{Drone workload lower bound}, \textit{Global capacity bound}, and \textit{Customer order symmetry breaking} rules are directly reformulated as follows:
+\begin{align}
+    & |V| \cdot z \ge \sum_{i \in C_d} \Big( (\tau'_{0i} + \tau'_{i0}) y_{i} + \tau_{swap} s_{i} \Big) \\[4pt]
+    & \Bigg( \sum_{i \in C_d} s_{i} + \sum_{i \in C_d} \Big(y_{i} - \sum_{k \in C_d, k \neq i} u_{ki} \Big) \Bigg) T \ge \sum_{i \in C_d} (\tau'_{0i} + \tau'_{i0}) y_{i} \\[4pt]
+    & u_{ij} \le s_{j}, \quad \forall i, j \in C_d, i > j
+\end{align}
+
+\textit{Note: For the energy-based model, $T$ is substituted with the battery capacity $E$, and the flight time $(\tau'_{0i} + \tau'_{i0})$ is replaced by the explicit energy parameter $e_i$.}
+
+By synthesizing the structural advantages of anonymous routing with these robust search-space pruning techniques, the final CP formulation achieves superior convergence rates and establishes provably tight lower bounds, as will be demonstrated in our computational experiments. 
+
+% \textit{Note: For the energy-based model, $T$ is substituted with the battery capacity $E$, and the flight time $(\tau'_{0i} + \tau'_{i0})$ is replaced by the explicit energy parameter $e_i$.}
+
+
+
+\subsection{Branch-cut-and-price Approach}
+\subsubsection{Review on VRPSolver models}
+
+VRPSolver is a computational package proposed by \citet{pessoa_generic_2019} to facilitate the creation of exact algorithms for vehicle routing problems. A VRPSolver model is a MIP that contains variables associated with resource-constrained paths over a directed graph defined by the user. Given that the number of paths can be exponentially large, these variables are generated dynamically by solving pricing problems that are Resource Constrained Shortest Path Problems (RCSPs) (see \citet{irnich_shortest_2005}). To guarantee the integrality of the variables, the MIP is solved by a Branch-and-Price (BP) algorithm. In addition, if structures known as packing sets are defined, cuts can be added, so that the resulting algorithm becomes a Branch-and-Cut-and-Price (BCP). This subsection presents the basic VRPSolver model, including all the features used in this work. Complete explanations can be found in \citet{pessoa_generic_2020}.
+
+\paragraph{Path generator graph.} Let $G=(V,A)$ be a directed graph defined by the VRPSolver user, where $V$ and $A$ are, respectively, the sets of vertices and arcs. $V$ has special vertices $v^{source}$ and $v^{sink}$ (they can be the same vertex) that represent the start and the end of resource-constrained paths. Let $R$ be a set of resources defined by the user. For each arc $a\in A$ and $r\in R$, there must be a resource consumption $q_{a,r}$ and a consumption interval $[l_{a,r},u_{a,r}]$. In some cases, it is more convenient to define consumption intervals for a resource $r\in R$ on the vertices; an interval $[l_{i,r},u_{i,r}]$ defined on vertex $i\in V$ is equivalent to defining the same interval on all arcs that enter vertex $i$. A path $p=(v^{source}=v_0,a_1,v_1,\ldots,a_n,v_n=v^{sink})$ on the graph $G$ is feasible if $n\ge 1$, $v_j\neq v^{source}$, $v_j\neq v^{sink}$ for $1\le j\le n-1$, and the cumulative resource consumption $S^p_{j,r}$ on visit $j$, $0\le j\le n$, does not exceed $u_{a_j,r}$, where $S^p_{0,r}=0$ and
+\begin{equation}
+S^p_{j,r}=\max\{l_{a_j,r},S^p_{j-1,r}+q_{a_j,r}\}.
+\end{equation}
+It is allowed to discard resources to meet the lower limit $l_{a_j,r}$; however, the upper limit $u_{a_j,r}$ is rigid. The definitions above implicitly define $\mathcal{P}$, the set of all resource-constrained paths in $G$. For each $a\in A$ and $p\in \mathcal{P}$, $h_a^p$ indicates how many times arc $a$ appears in path $p$.
+
+\paragraph{Mapping and formulation.} The MIP is defined by the user on the variables $x_j$, $1\le j\le n_1$, and $y_s$, $1\le s\le n_2$. The first $\bar{n}_1$ variables $x_j$ and the first $\bar{n}_2$ variables $y_s$ are integer. Equations \eqref{eq:vrp_obj} and \eqref{eq:vrp_cons} define the objective function and $m$ constraints on those variables, respectively. For each variable $x_j$, $1\le j\le n_1$, the user must define $M(x_j)\subseteq A$, a mapping into non-empty subsets of arcs. For $a\in A$, $M^{-1}(a)$ denotes the reverse mapping given by $\{j\mid 1\le j\le n_1;\ a\in M(x_j)\}$. The mappings do not need to be disjoint, and an arc can belong to the mapping of more than one variable $x_j$. Since not every arc needs to belong to a mapping, some $M^{-1}$ sets may be empty. For each path $p\in \mathcal{P}$, $\lambda_p$ is defined as a non-negative integer variable. The relation between these variables and the variables $x$ is automatically given by Equation \eqref{eq:vrp_map}. The values $L$ and $U$, defined by the user, are the lower and upper bounds for the number of paths in a solution.
+\begin{align}
+\min \quad & \sum_{j=1}^{n_1} c_j x_j + \sum_{s=1}^{n_2} f_s y_s \label{eq:vrp_obj}\\
+\text{s.t.}\quad & \sum_{j=1}^{n_1} \alpha_{ij}x_j + \sum_{s=1}^{n_2} \beta_{is}y_s \ge d_i, \quad i=1,\ldots,m, \label{eq:vrp_cons}\\
+& x_j = \sum_{p\in \mathcal{P}} \left( \sum_{a\in M(x_j)} h_a^p \right) \lambda_p, \quad j=1,\ldots,n_1, \label{eq:vrp_map}\\
+& L \le \sum_{p\in \mathcal{P}} \lambda_p \le U, \label{eq:vrp_bounds}\\
+& \lambda_p \in \mathbb{Z}_+, \quad p\in \mathcal{P}, \label{eq:vrp_lambda}\\
+& x_j \in \mathbb{Z},\ y_s \in \mathbb{Z}, \quad j=1,\ldots,\bar{n}_1,\ s=1,\ldots,\bar{n}_2. \label{eq:vrp_int}
+\end{align}
+Each variable $x_j$, $j=1,\ldots,n_1$, is completely determined by a linear function of the variables $\lambda$ obtained through mapping. In fact, the only purpose of these variables is to allow the expression of the objective function \eqref{eq:vrp_obj} and of the constraints \eqref{eq:vrp_cons}. Eliminating all $x$ variables and relaxing the integrality restrictions, we obtain the following Master LP (Linear Program):
+\begin{align}
+\min \quad & \sum_{p\in \mathcal{P}} \left( \sum_{j=1}^{n_1} c_j \sum_{a\in M(x_j)} h_a^p \right) \lambda_p + \sum_{s=1}^{n_2} f_s y_s \label{eq:vrp_master_obj}\\
+\text{s.t.}\quad & \sum_{p\in \mathcal{P}} \left( \sum_{j=1}^{n_1} \alpha_{ij} \sum_{a\in M(x_j)} h_a^p \right) \lambda_p + \sum_{s=1}^{n_2} \beta_{is}y_s \ge d_i, \quad i=1,\ldots,m, \label{eq:vrp_master_cons}\\
+& L \le \sum_{p\in \mathcal{P}} \lambda_p \le U, \label{eq:vrp_master_bounds}\\
+& \lambda_p \ge 0, \quad p\in \mathcal{P}. \label{eq:vrp_master_nonneg}
+\end{align}
+The Master LP, given by Equations \eqref{eq:vrp_master_obj}--\eqref{eq:vrp_master_nonneg}, is solved by column generation. Let $\pi_i$, $1\le i\le m$, and $\nu^+$ and $\nu^-$ be the dual variables associated with Constraints \eqref{eq:vrp_master_cons} and \eqref{eq:vrp_master_bounds}, respectively. The reduced cost of an arc $a\in A$ is given by
+\begin{equation}
+\bar{c}_a = \sum_{j\in M^{-1}(a)} c_j - \sum_{i=1}^{m} \sum_{j\in M^{-1}(a)} \alpha_{ij}\pi_i.
+\end{equation}
+The reduced cost of a path $p=(v_0,a_1,v_1,\ldots,a_n,v_n)\in \mathcal{P}$ is
+\begin{equation}
+\bar{c}(p) = \sum_{j=1}^{n} \bar{c}_{a_j} - \nu^+ - \nu^-.
+\end{equation}
+Therefore, the pricing subproblem is equivalent to finding a path $p\in \mathcal{P}$ with minimum reduced cost. This can be done by a labeling dynamic programming algorithm, as described in \citet{sadykov_bucket_2021}. The optimal solution of the Master LP may not satisfy the integrality constraints \eqref{eq:vrp_int}. Hence, branching constraints need to be introduced, leading to a Branch-and-Price algorithm.
+
+\paragraph{Packing sets and advanced BCP elements.} Let coefficient $h_v^p$ indicate how many times vertex $v\in V$ appears in a path $p$. Let $\mathcal{B}^V\subset 2^V$ be a collection of mutually disjoint subsets of $V$ such that the constraints
+\begin{equation}
+\sum_{p\in \mathcal{P}} \left( \sum_{v\in B} h_v^p \right) \lambda_p \le 1, \quad B\in \mathcal{B}^V,
+\label{eq:vrp_packing}
+\end{equation}
+are satisfied by at least one optimal solution $(x^*,y^*,\lambda^*)$ of Formulation \eqref{eq:vrp_obj}--\eqref{eq:vrp_int}. This means that there is an optimal solution that uses, in any of its paths, at most one vertex per packing set. In those conditions, we say that the elements of $\mathcal{B}^V$ are packing sets on vertices. The definition of $B$ is also part of the modeling and must be provided by the user.
+
+The packing sets are used by VRPSolver to improve the solution of Formulation \eqref{eq:vrp_obj}--\eqref{eq:vrp_int}, moving from a basic Branch-and-Price algorithm to an advanced Branch-Cut-and-Price algorithm. \citet{pessoa_generic_2020} explain how algorithmic elements used in modern BCPs for vehicle routing, such as ng-paths, route enumeration, and rank-1 cuts with limited memory, are generalized to work with packing sets, making the model solution much more efficient.
+
+\subsubsection{A VRPSolver Model for the Battery-Swapping PDSTSP}
+
+
+
+\section{Hybrid Genetic Search}
+\label{sec:hgs}
+
+Our experiments using the MILP and CP formulations described in the previous sections indicate that these approaches provide high-quality solutions for small and medium-sized instances (10-20 customers). However, their performance deteriorates significantly for larger instances (30-100 customers), which limits their suitability for the extensive analyses in this research. To address this scalability issue, we employ a Hybrid Genetic Search (HGS) framework originally developed by~\cite{vidal_hybrid_2013, vidal_hgs_2022}.
+
+The overall evolutionary structure of HGS is preserved, while several adaptations are introduced to accommodate the specific operational characteristics of the PDSTSP with battery swap decisions. 
+In particular, we employ a dual-chromosome representation to encode both truck and drone routes, introduce a super node concept to enable split-based decoding of drone sequences under battery constraints, and use the Modified Order Crossover (MOX) operator proposed by~\citet{pham_solving_2017} to handle variable-length chromosomes resulting from flexible service assignments. 
+The following subsections describe these modifications in more detail.
+
+\subsection{Chromosome Representation}
+
+In the proposed Hybrid Genetic Search framework, each individual is encoded with two chromosomes to represent both the truck and drone service sequences.
+
+\begin{itemize}
+    \item \textbf{Truck chromosome:} This chromosome encodes a permutation of the customers assigned to the truck, defining a classical TSP tour that starts and ends at the depot.
+    
+    \item \textbf{Drone chromosome:} This chromosome encodes an ordered sequence of customers that are served by the fleet of drones, represented as a giant tour. The giant tour is then partitioned into feasible drone trips using a split procedure.     
+\end{itemize}
+
+This dual-chromosome representation allows customers to be reassigned between the truck and the drones, while preserving a simple giant-tour structure compatible with split-based decoding.
+
+\subsection{Population Initialization}
+
+The initial population is generated to ensure a diverse distribution of customer assignments between the truck and drones. We employ the following strategy:
+
+\begin{itemize}
+    \item For each customer, we determine whether it is drone-eligible, based on its location, payload and the corresponding energy or flight-time constraints.
+    \item Among the drone-eligible customers, a randomly selected subset is assigned to the truck chromosome in the initial population, even though they are feasible for drone delivery. This broadens the set of initial solutions.
+    \item The remaining drone-eligible customers are placed into the drone chromosome sequence.
+    \item Customers that are not drone-eligible are assigned directly to the truck chromosome.
+\end{itemize}
+
+This initialization strategy ensures that even customers feasible for drone delivery are also partially explored by truck in the initial population, broadening the search space.
+
+Population diversity is monitored using the standard broken pairs distance (BPD) measure of the HGS framework, computed from the adjacency relations defined by the truck and drone routes. This metric naturally captures differences in both sequencing and service assignment.
+
+\subsection{Split Algorithm}
+
+We use a standard dynamic programming split procedure for sequence-based routing with a fixed fleet size~\citep{prins_tour_split_2004, vidal_technical_2016} to partition the drone sequence into feasible routes. Each customer is modeled as a \emph{super node}, corresponding to a complete drone sortie (depot-customer-depot), with associated duration and energy consumption.
+
+Routes are constructed by extending consecutive segments of customers, while maintaining energy feasibility through conditional battery swapping. 
+For a segment $(i,j)$, its duration is computed as the sum of drone round-trip times 
+$(\tau'_{0i} + \tau'_{i0})$ for all customers in the segment, plus additional swap times $\tau_{swap}$ whenever the remaining battery is insufficient.
+
+A segment is extended sequentially as long as its duration does not exceed a predefined limit. If adding a customer violates this limit, the segment is terminated and a new route is started.
+The duration limit is initialized as a fraction of the truck route duration and is increased iteratively if no feasible split is found. Since the objective is to minimize the makespan, using the truck route duration provides a natural reference for bounding drone route lengths. In our implementation, the initial limit is set to $0.9$ times the truck route duration and is multiplied by $1.2$ at each iteration, for a maximum of 10 attempts.
+
+\subsection{Crossover}
+The crossover procedure is responsible for exchanging genetic material between two parent solutions while preserving feasible customer assignments and maintaining population diversity.
+In this study, we adopt the Modified Order Crossover (MOX) operator proposed by~\cite{pham_solving_2017}, which extends the classical Order Crossover (OX) commonly used in vehicle routing problems.
+MOX retains the relative order of customers while flexibly handling chromosomes of different lengths - a key advantage in our problem, where chromosome size may vary as some customers are reassigned between the truck and drones during the search process.
+
+At each crossover event, one of the two chromosomes (truck or drone) is randomly selected with equal probability (50\%) to undergo recombination using the MOX operator.
+Applying the same crossover operator to both chromosomes simplifies the framework and ensures consistent recombination behavior, regardless of current delivery mode assigned to each customer.
+
+After crossover, infeasible offspring (e.g., those containing inconsistent service assignments) are repaired with a probability of 50\%. This partial repair mechanism, inherited from the HGS framework, maintains a controlled level of infeasibility in the population, enhancing diversity while still guiding the search toward feasible and high-quality solutions.
+
+\subsection{Local Search}
+After decoding the chromosomes, a solution consists of one truck route and several drone routes. 
+Each drone route represents the sequence of customers served by a specific drone. 
+The solution can therefore be viewed as a set of $N_R + 1$ routes, where $N_R$ denotes the number of drones and one additional route corresponds to the truck.
+
+The local search explores classical neighborhood operators used in Hybrid Genetic Search, including \textit{relocate}, \textit{swap}, and \textit{2-opt}. 
+These operators allow customers to be repositioned within a route or transferred between routes.
+
+\paragraph{Move feasibility}
+A compatibility rule is enforced when customers are transferred between routes. 
+Let $C_d$ denote the set of customers eligible for drone delivery and $C_t$ the set of customers that must be served by the truck. 
+Customers in $C_t$ are restricted to the truck route and cannot be inserted into drone routes, whereas customers in $C_d$ may appear in either truck or drone routes. 
+Moves violating this rule are discarded before evaluation.
+
+\paragraph{Local objective}
+Each move modifies either one route (intra-route move) or two routes (inter-route move). 
+Instead of recomputing the makespan of the entire solution, the evaluation is restricted to the routes affected by the move. 
+Let $R$ denote a route with completion time $C(R)$. 
+For intra-route moves, the move is accepted if
+
+\[
+C(R') < C(R)
+\]
+
+where $R'$ is the route obtained after applying the move.
+
+For inter-route moves involving routes $R_a$ and $R_b$, the move is accepted if
+
+\[
+\max \big(C(R_a'), C(R_b')\big)
+<
+\max \big(C(R_a), C(R_b)\big)
+\]
+
+where $R_a'$ and $R_b'$ denote the modified routes.
+
+\paragraph{Efficient sequence-based evaluation}
+
+To evaluate neighborhood moves efficiently, we adopt the sequence-based evaluation framework commonly used in Hybrid Genetic Search. 
+This framework represents each route as a sequence of customers and maintains aggregated attributes for every subsequence, allowing route costs to be updated through concatenation operations instead of full recomputation. The framework can accommodate multiple types of route attributes, such as travel cost, load, time-window information, or route duration, depending on the problem variant.
+
+In our problem, the evaluation must additionally account for drone resource consumption and battery swapping operations. 
+To this end, we extend the sequence attributes and concatenation rules to incorporate both resource usage and swap decisions.
+The framework is expressed in terms of a generic resource, which represents either battery energy in the energy-based model or flight time in the time-based model.
+
+Let $\sigma$ denote a sequence of customers. 
+For each sequence, we maintain the following attributes:
+\[
+C(\sigma), \quad
+R_{tot}(\sigma), \quad
+R_{rem}(\sigma), \quad
+n_{swap}(\sigma), \quad
+R_{min}(\sigma),
+\]
+
+where $C(\sigma)$ is the completion time, $R_{tot}(\sigma)$ the total resource consumption, 
+$R_{rem}(\sigma)$ the remaining resource after executing the sequence, 
+$n_{swap}(\sigma)$ the number of swaps, 
+and $R_{min}(\sigma)$ the minimum starting resource required to execute $\sigma$ without modifying its swap structure.
+
+\paragraph{Concatenation of sequences}
+
+Let $\sigma = \sigma_1 \oplus \sigma_2$ denote the concatenation of two sequences. 
+The resulting attributes are defined as
+
+\[
+\begin{aligned}
+C(\sigma) &= C(\sigma_1) + C(\sigma_2) + \Delta(\sigma_1,\sigma_2) \\
+n_{swap}(\sigma) &= n_{swap}(\sigma_1) + n_{swap}(\sigma_2) + \delta(\sigma_1,\sigma_2) \\
+R_{tot}(\sigma) &= R_{tot}(\sigma_1) + R_{tot}(\sigma_2)
+\end{aligned}
+\]
+
+where $\Delta(\sigma_1,\sigma_2)$ and $\delta(\sigma_1,\sigma_2)$ capture the additional cost and number of swaps induced by the concatenation:
+
+\[
+\Delta(\sigma_1,\sigma_2) =
+\begin{cases}
+0 & \text{if } R_{rem}(\sigma_1) \ge R_{min}(\sigma_2) \\
+
+T_{swap} & \text{if } R_{rem}(\sigma_1) < r_{first}(\sigma_2) \\
+
+\text{recomputed cost} & \text{otherwise}
+\end{cases}
+\]
+
+\[
+\delta(\sigma_1,\sigma_2) =
+\begin{cases}
+0 & \text{if } R_{rem}(\sigma_1) \ge R_{min}(\sigma_2) \\
+
+1 & \text{if } R_{rem}(\sigma_1) < r_{first}(\sigma_2) \\
+
+\text{recomputed swaps} & \text{otherwise}
+\end{cases}
+\]
+
+The remaining resource after concatenation is
+
+\[
+R_{rem}(\sigma) =
+\begin{cases}
+R_{rem}(\sigma_2) 
+& \text{if } R_{rem}(\sigma_1) < r_{first}(\sigma_2) \ \text{or } n_{swap}(\sigma_2) > 0 \\
+
+R_{rem}(\sigma_1) - R_{tot}(\sigma_2) 
+& \text{if } R_{rem}(\sigma_1) \ge R_{min}(\sigma_2) \ \text{and } n_{swap}(\sigma_2)=0 \\
+
+\text{recomputed value} & \text{otherwise}
+\end{cases}
+\]
+
+The minimum required starting resource is propagated as
+
+\[
+R_{min}(\sigma) =
+\begin{cases}
+R_{min}(\sigma_1) 
+& \text{if } n_{swap}(\sigma_1) > 0 \\
+
+R_{tot}(\sigma_1) + R_{min}(\sigma_2) 
+& \text{if } n_{swap}(\sigma_2) > 0 \\
+
+R_{tot}(\sigma_1) + R_{tot}(\sigma_2) 
+& \text{otherwise}
+\end{cases}
+\]
+
+The three cases correspond to (i) unchanged swap structure, (ii) insertion of a swap before the sequence, and (iii) recomputation of the swap pattern.
+
+
+\paragraph{Instantiation and Move evaluation}
+
+In the energy-based model, the resource corresponds to battery energy. 
+In the time-based model, the same framework applies by interpreting the resource as flight time (endurance). 
+All sequence attributes and concatenation rules remain identical, differing only in the definition of the resource.
+
+Using these attributes, the cost of modified routes can be computed by concatenating a small number of subsequences. 
+For example, a relocate move inserting a customer $i$ from route $R_a$ into route $R_b$ yields
+\[
+R_a' = \sigma_a^1 \oplus \sigma_a^2,
+\qquad
+R_b' = \sigma_b^1 \oplus \{i\} \oplus \sigma_b^2.
+\]
+
+This evaluation avoids recomputing entire routes and significantly accelerates the local search. 
+Most concatenations can be evaluated in constant time, while recomputation is required only when the swap structure changes.
+
+\section{Computational Experiments}
+\label{sec:computational_experiments}
+
+This section presents a comprehensive experimental study with two main purposes. 
+First, we evaluate the computational performance and scalability of the proposed MILP, CP, and Hybrid Genetic Search (HGS) approaches under both time-based and energy-based battery swapping models. 
+Second, and more importantly, we investigate the modeling necessity of explicitly incorporating battery swap-time into multi-trip drone routing optimization.
+
+The experiments are designed to determine whether swap-time can be safely ignored during planning and handled only through post-optimization re-evaluation, or whether it must be integrated directly into the optimization model to obtain robust and time-feasible schedules.
+
+The analysis proceeds in four stages. First, we evaluate the performance of the 3-index and 2-index CP formulations to identify the most efficient model, which then serves as the exact baseline. Second, using this established baseline, we benchmark the exact approach against the proposed metaheuristic methods. Third, we quantify the makespan degradation caused by ignoring battery swap times during optimization, contrasting it with explicitly integrated schedules. Finally, we assess the robustness of these findings through comprehensive sensitivity analyses.
+
+% \subsection{Experimental Setup}
+
+% Two versions of the proposed problem are examined in this study to assess whether conclusions regarding battery swapping decisions depend on how energy consumption is modeled.  
+% The first version assumes a \textit{constant energy consumption rate}, resulting in a \textit{fixed drone endurance} (30 minutes for instances from~\cite{murray_flying_2015} and 36 minutes for instances from~\cite{nguyen_min_cost_2022}).  \textcolor{red}{HMH: noi ro instance cua fixed model lay tu nguon nao. PTA: Done}
+% The second version incorporates a \textit{payload-dependent energy consumption model}, where the energy usage increases linearly with the carried weight, leading to variable flight durations across deliveries.  
+% All parameters related to energy estimation are taken from~\cite{dorling_vehicle_2017}.  
+% Both models are solved using exact and heuristic approaches to evaluate their performance under different instance scales.
+
+% Since no publicly available dataset exists for the PDSTSP that explicitly considers payload-dependent energy consumption, we generated two groups of experimental instances based on existing sources, as described below.
+
+% \begin{enumerate}
+%     \item \textbf{Small- and medium-sized instances.}  
+%     We adopted 360 instances with 10 customers and another 360 instances with 20 customers from~\cite{murray_flying_2015}.  
+%     To incorporate the energy model, which requires payload information not provided in the original dataset, we generated package weights following the setting in~\cite{cheng_drone_2020}:  
+%     the demand of the first 40\% of customers was uniformly sampled from $[0.1, 0.7]$, while that of the remaining customers was drawn from $[0.1, 1.5]$.  
+%     This distribution is consistent with~\cite{dorling_vehicle_2017}, from which the energy consumption parameters were derived.  
+%     Consequently, the generated payloads are physically coherent with the adopted energy model, ensuring that variations in payload weight lead to realistic changes in energy consumption.
+
+%     \item \textbf{Larger instances.}  
+%     We used 27 instances for each size category (30, 50, and 100 customers), derived from~\cite{nguyen_min_cost_2022}, which originally addressed the Parallel Drone Scheduling Vehicle Routing Problem (PDSVRP) involving multiple trucks and drones.  
+%     In our study, the number of trucks was restricted to one to conform to the PDSTSP setting.  
+    
+%     To make these data compatible with the CP formulation, which requires integer coefficients, we applied the following scaling operations:
+%     \begin{itemize}
+%         \item All time-related values (travel and flying times) were converted to seconds.  
+%         \item Energy consumption rates and battery capacities were multiplied by $1000$ to eliminate fractional values.
+%     \end{itemize}
+    
+%     These transformations preserve the relative magnitudes among parameters and ensure both numerical stability and compatibility with the CP solver.
+% \end{enumerate}
+
+% In total, we used 801 data instances ranging from 10 to 100 customers.  
+% Battery swapping operations were modeled under three swap-time settings, $\tau_{swap} \in \{0, 3, 5\}$, where $\tau_{swap}=0$ represents the commonly adopted idealized assumption of instantaneous swapping, while 3 and 5 minutes correspond to realistic replacement durations observed in practice, and two replacement policies:  
+% (i) swapping only when the remaining flight time is insufficient, and  
+% (ii) swapping only when the remaining energy is insufficient.
+
+% For small- and medium-sized instances (10 to 20 customers), we solved all instances using the mixed-integer linear programming (MILP) formulation, the constraint programming (CP) model, and the hybrid genetic search (HGS) algorithm to  to enable a comprehensive performance comparison.
+% % The CP formulation was not employed for these instances because it offers no clear advantage at small scales, where the MILP model can already reach proven optimality within short computation times. 
+% % In addition, the CP formulation requires a more complex model setup and parameter tuning, which becomes worthwhile only when the search space grows combinatorially with the problem size. 
+% For larger instances (30 to 100 customers), the MILP formulation was not applied as it was unable to consistently produce feasible solutions within reasonable time limits. Consequently, the CP model and the HGS algorithm were adopted for this scale of problems.
+
+% % For small- and medium-sized instances (10 to 20 customers), both the mixed-integer linear programming (MILP) formulation and the metaheuristic algorithm were applied to obtain optimal or near-optimal solutions. 
+% % For larger instances (30 to 100 customers), a constraint programming (CP) formulation and the metaheuristic approach were employed to ensure computational tractability while maintaining solution quality. 
+% % \textcolor{red}{HMH: why not CP for small instances? Explain clearly the reason! PTA: Updated}
+
+% All algorithms are implemented in C++ and executed on a workstation equipped with a 13th Gen Intel Core i5-13500 × 20 and 64~GB RAM, with a limited running time of 1 hour.  
+% For the metaheuristic method, each experiment was repeated ten times with different random seeds to evaluate the stability of the solutions.  
+% The maximum number of generations without improvement was set to 20,000.
+
+\subsection{Experimental Setup}
+
+Two versions of the proposed problem are examined in this study to assess whether conclusions regarding battery swapping decisions depend on how energy consumption is modeled.
+The first version assumes a \textit{constant energy consumption rate}, resulting in a \textit{fixed drone endurance} (30 minutes for instances from~\cite{murray_flying_2015} and 36 minutes for instances from~\cite{nguyen_min_cost_2022}).
+The second version incorporates a \textit{payload-dependent energy consumption model}, where the energy usage increases linearly with the carried weight, leading to variable flight durations across deliveries.
+All parameters related to energy estimation are taken from~\cite{dorling_vehicle_2017}.
+Both models are solved using exact and heuristic approaches to evaluate their performance under different instance scales.
+
+Since no publicly available dataset exists for the PDSTSP that explicitly considers payload-dependent energy consumption, we generated two groups of experimental instances based on existing sources, as described below.
+
+\begin{enumerate}
+    \item \textbf{Small- and medium-sized instances.}  
+    We adopted 360 instances with 10 customers and another 360 instances with 20 customers from~\cite{murray_flying_2015}.  
+    To incorporate the energy model, which requires payload information not provided in the original dataset, we generated package weights following the setting in~\cite{cheng_drone_2020}:  
+    the demand of the first 40\% of customers was uniformly sampled from $[0.1, 0.7]$, while that of the remaining customers was drawn from $[0.1, 1.5]$.  
+    This distribution is consistent with~\cite{dorling_vehicle_2017}, from which the energy consumption parameters were derived.
+    Consequently, the generated payloads are physically coherent with the adopted energy model, ensuring that variations in payload weight lead to realistic changes in energy consumption.
+
+    \item \textbf{Larger instances.}  
+    We used 27 instances for each size category (30, 50, and 100 customers), derived from~\cite{nguyen_min_cost_2022}, which originally addressed the Parallel Drone Scheduling Vehicle Routing Problem (PDSVRP) involving multiple trucks and drones.  
+    In our study, the number of trucks was restricted to one to conform to the PDSTSP setting.  
+\end{enumerate}
+
+
+To ensure compatibility with the Constraint Programming (CP) formulation, which relies on integer arithmetic, a consistent scaling procedure was applied to all generated instances described above. Specifically:
+\begin{itemize}
+    \item All time-related values (travel and flying times) were converted to seconds.
+    \item Energy consumption rates and battery capacities were multiplied by $1000$ to eliminate fractional values.
+\end{itemize}
+
+
+
+
+
+In total, we used 801 data instances ranging from 10 to 100 customers.  
+Battery swapping operations were modeled under three swap-time settings, $\tau_{swap} \in \{0, 3, 5\}$, where $\tau_{swap}=0$ represents the commonly adopted idealized assumption of instantaneous swapping, while 3 and 5 minutes correspond to realistic replacement durations observed in practice, and two replacement policies:  
+(i) swapping only when the remaining flight time is insufficient, and  
+(ii) swapping only when the remaining energy is insufficient.
+
+For small- and medium-sized instances (10 to 20 customers), we solved all instances using the mixed-integer linear programming (MILP) formulation, the constraint programming (CP) model, and the hybrid genetic search (HGS) algorithm to enable a comprehensive performance comparison.
+For larger instances (30 to 100 customers), the MILP formulation was not applied as it was unable to consistently produce feasible solutions within reasonable time limits. Consequently, the CP model and the HGS algorithm were adopted for this scale of problems.
+
+All algorithms are implemented in C++ and executed on a workstation equipped with a 13th Gen Intel Core i5-13500 × 20 and 64~GB RAM, with limited running time of 1 hour.  
+For the metaheuristic method, each experiment was repeated ten times with different random seeds to evaluate the stability of the solutions.  
+The maximum number of generations without improvement was set to 20000.
+\subsection{Evaluation of CP Formulations: 3-index vs. 2-index}
+\label{sec:cp_formulation_comparison}
+
+Before conducting the main performance evaluation, we first compare the computational efficiency of the two proposed exact formulations: the standard vehicle-indexed (3-index) and the anonymous routing (2-index) formulations. To ensure a fair comparison, both models are enhanced with the three proposed valid and symmetry-breaking inequalities described in ~\ref{sec:cp_valid_ineq} and ~\ref{sec:cp_enhancing_anonymous}. This preliminary test aims to specifically evaluate the impact of the anonymous routing technique on solver efficiency.
+
+To evaluate the performance, the following indicators are reported:
+(i) the number of instances solved to proven optimality (\#Opt), 
+(ii) the average optimality gap $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$ (\%), where the gap for each instance is computed as:
+\begin{equation}
+    \mathrm{GAP}^{\mathrm{Opt}} = \frac{UB - LB}{LB} \times 100
+\end{equation}
+(iii) the average computational time ($\overline{T}$, in seconds).
+
+Since preliminary tests showed that both CP models can solve small-scale instances ($|C| \in \{10, 20\}$) to optimality, this comparison is specifically conducted on medium to large-scale instances with $|C| \in \{30, 50, 100\}$ to better highlight their performance differences. Table~\ref{tab:cp_3idx_vs_2idx} summarizes the results for both time and energy models within a 3,600-second time limit.
+
+\begin{table}[H]
+  \centering
+  \caption{Comparison of computational performance between 3-index and 2-index formulations for time and energy models}
+  \label{tab:cp_3idx_vs_2idx}
+  \resizebox{\textwidth}{!}{ 
+  \begin{tabular}{cccc ccc ccc ccc ccc}
+    \toprule
+    \multicolumn{4}{c}{\textbf{Instance}} & \multicolumn{6}{c}{\textbf{Time-based model}} & \multicolumn{6}{c}{\textbf{Energy-based model}} \\
+    \cmidrule(lr){5-10} \cmidrule(lr){11-16}
+    \multicolumn{4}{c}{\textbf{Characteristics}} & \multicolumn{3}{c}{\textbf{3-Index formulation}} & \multicolumn{3}{c}{\textbf{2-Index formulation}} & \multicolumn{3}{c}{\textbf{3-Index formulation}} & \multicolumn{3}{c}{\textbf{2-Index formulation}} \\
+    \cmidrule(lr){1-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13} \cmidrule(lr){14-16}
+    $|C|$ & $|V|$ & $\tau_{swap}$ (min) & \#Inst. & \#Opt & $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$  & $\overline{T}$  & \#Opt & $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$  & $\overline{T}$  & \#Opt & $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$  & $\overline{T}$  & \#Opt & $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$  & $\overline{T}$  \\
+    \midrule
+    
+    % ========== Instance 30 ==========
+    30 & 4 & 0 & 27 & \textbf{27} & 0.00 & 124.90 & 24 & 0.02 & 407.20 & \textbf{27} & 0.00 & 61.32 & 23 & 0.36 & 546.43 \\
+    30 & 4 & 3 & 27 & 23 & 0.39 & 716.42 & 24 & 0.06 & 509.50 & \textbf{27} & 0.00 & 85.44 & 26 & 0.40 & 317.48 \\
+    30 & 4 & 5 & 27 & 21 & 1.02 & 965.95 & 23 & 0.17 & 551.21 & \textbf{25} & 0.01 & 423.48 & \textbf{25} & 0.49 & 590.70 \\
+    
+    \cmidrule{1-16}
+    % ========== Instance 50 ==========
+    50 & 4 & 0 & 27 & 26 & 0.18 & 449.40 & \textbf{27} & 0.00 & 165.32 & \textbf{26} & 0.04 & 407.50 & \textbf{26} & 0.00 & 520.09 \\
+    50 & 4 & 3 & 27 & 12 & 1.20 & 2020.62 & \textbf{19} & 0.12 & 1216.78 & 13 & 0.50 & 2312.25 & \textbf{19} & 0.37 & 1666.61 \\
+    50 & 4 & 5 & 27 & 11 & 1.80 & 2159.97 & \textbf{21} & 0.38 & 940.72 & 9 & 0.92 & 2498.48 & \textbf{15} & 0.43 & 1906.83 \\
+    
+    \cmidrule{1-16}
+    % ========== Instance 100 ==========
+    100 & 5 & 0 & 27 & 11 & 6.32 & 2546.01 & \textbf{17} & 0.95 & 1702.26 & 8 & 6.00 & 2807.23 & \textbf{16} & 2.13 & 1720.96 \\
+    100 & 5 & 3 & 27 & 12 & 7.10 & 2458.91 & \textbf{15} & 1.67 & 1836.48 & 9 & 6.63 & 2728.80 & \textbf{13} & 2.25 & 2115.37 \\
+    100 & 5 & 5 & 27 & 10 & 7.37 & 2561.04 & \textbf{17} & 1.58 & 1730.42 & 9 & 7.29 & 2740.20 & \textbf{13} & 3.67 & 2102.39 \\
+    
+    \bottomrule
+  \end{tabular}
+  } 
+\end{table}
+
+
+
+The results presented in Table~\ref{tab:cp_3idx_vs_2idx} indicate that the 2-index formulation is generally stronger overall, particularly as the instance size increases. 
+At \( |C|=30 \), however, the comparison is more nuanced: the 2-index model is clearly superior for the time-based objective (more optimal solutions, lower average optimality gap, and lower runtime), while the updated energy-based results show that the 3-index model remains competitive and can outperform 2-index in some settings (notably at \(\tau_{swap}=0,3\)). 
+For example, in the time-based model with \(\tau_{swap}=0\), the 2-index formulation solves 24 instances to optimality with a gap of only \(0.02\%\), whereas the 3-index formulation solves 21 instances with a higher gap of \(0.78\%\).
+
+
+As the problem scale increases to $|C|=50$ and $|C|=100$, a significant performance divergence is observed. The efficiency of the 3-index formulation degrades sharply due to fleet symmetry, where the permutation of identical drones creates massive redundancy in the search tree. This impact is most evident in the $|C|=50$ instances for the time model ($\tau_{swap}=3$), where the 2-index formulation identifies 19 optimal solutions compared to only 10 by the 3-index one. Furthermore, the 2-index formulation effectively reduces the average computational time by more than 1,000 seconds in several scenarios, highlighting its search efficiency.
+
+At the largest scale ($|C|=100$), the 2-index formulation proves to be considerably more robust. For the energy model, while the 3-index formulation struggles with optimality gaps reaching as high as 8.25\%, the 2-index formulation maintains gaps under 2.02\% and identifies nearly double the number of optimal solutions (e.g., 18 vs. 9 instances at $\tau_{swap}=0$). Across all 100-customer instances, the 2-index formulation consistently achieves lower $\overline{T}$ and $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$ for both objectives. These findings confirm that the anonymous routing mechanism effectively prunes the search space by eliminating symmetry and strengthening the overall formulation. Consequently, the \textbf{2-index anonymous routing formulation} is selected as the representative CP approach for all subsequent experiments.
+
+% -- PHẦN 4: SO SÁNH HIỆU NĂNG --
+\subsection{Performance Comparison of Methods under Different Battery Swapping Models}
+\label{sec:performance_all}
+
+This section presents a comprehensive comparison of the computational performance among MILP, CP, and HGS for both the time-based and energy-based battery swapping models. Experiments were conducted across various drone fleet sizes ($|V|$) and battery swapping times ($\tau_{swap} \in \{0, 3, 5\}$ minutes). 
+
+Across all experiments, the performance of MILP and CP is reported using the indicators defined in the previous section (\#Opt, $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$, and $\overline{T}$). For the HGS metaheuristic, the following performance indicators are reported:
+(i) \#Opt, representing the number of instances where the best solution found by HGS matches the best lower bound obtained by either MILP or CP, 
+(ii) the average percentage gaps of the best and average solutions, denoted by $\overline{\mathrm{GAP}}_{\text{Best}}$ and $\overline{\mathrm{GAP}}_{\text{Avg}}$, respectively,
+(iii) the average best makespan ($\overline{C}_{\text{Best}}$), and 
+(iv) the average runtime ($\overline{T}$, in seconds). 
+
+For each instance, these gaps are computed relative to the best upper bound found by the exact methods, defined as:
+\[
+UB^{*} = \min(UB_{\mathrm{MILP}},\, UB_{\mathrm{CP}})
+\]
+The gaps for the best and average solutions are calculated as follows:
+\[
+\mathrm{GAP}_{\text{Best}} = \frac{C_{\text{Best}} - UB^{*}}{UB^{*}} \times 100, \qquad \mathrm{GAP}_{\text{Avg}} = \frac{C_{\text{Avg}} - UB^{*}}{UB^{*}} \times 100
+\]
+The values reported in the subsequent tables correspond to the averages of these indicators over all instances in each test group.
+\subsubsection{Results on the Time-based Battery Swapping Model}
+\label{sec:performance_time_based}
+
+In the time-based battery swapping model, each drone has a fixed flight time limit, and a battery swap is performed when the remaining flight time is insufficient for the next delivery. Table~\ref{tab:performance_milp_cp_hgs_time_based} reports the computational results of MILP, CP, and the proposed HGS on the time-based battery swapping model.
+\begin{table}[H]
+    \centering
+    \setlength{\tabcolsep}{3pt} % Giảm khoảng cách chiều ngang giữa các cột (mặc định là 6pt)
+    \renewcommand{\arraystretch}{0.95} % Giảm chiều cao của các hàng (mặc định là 1.0)
+    \caption{Performance comparison between MILP, CP, and HGS on time-based battery swapping model}
+    \label{tab:performance_milp_cp_hgs_time_based}
+    \scriptsize
+    \setlength{\tabcolsep}{2pt}
+    \begin{tabular}{cccc cccc cccc ccccc}
+    \toprule
+    \multirow{2}{*}{$|C|$} & 
+    \multirow{2}{*}{$|V|$} & 
+    \multirow{2}{*}{$\tau_{\text{swap}}$} & 
+    \multirow{2}{*}{\#Inst.} &
+    \multicolumn{4}{c}{MILP} & 
+    \multicolumn{4}{c}{CP} & 
+    \multicolumn{5}{c}{HGS} \\
+    \cmidrule(lr){5-8} \cmidrule(lr){9-12} \cmidrule(lr){13-17}
+    & & (min) & 
+    & \#Opt 
+    & $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$ 
+    & $\overline{C}$ 
+    & $\overline{T}$ 
+    & \#Opt 
+    & $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$ 
+    & $\overline{C}$ 
+    & $\overline{T}$ 
+    & \#Opt 
+    & $\overline{\mathrm{GAP}}_{\text{Best}}$ 
+    & $\overline{\mathrm{GAP}}_{\text{Avg}}$ 
+    & $\overline{C}_{\text{Best}}$ 
+    & $\overline{T}$ \\
+    \midrule
+    
+       % ===== 2INDEX TIME =====
+    % ========== Instance 10 ==========
+    10 & 1 & 0 & 120 & 120 & 0.00 & 114.1 & 1.6 & 120 & 0.00 & 114.1 & 0.2 & 120 & 0.00 & 0.00 & 114.1 & 3.2 \\
+    10 & 1 & 3 & 120 & 120 & 0.00 & 114.2 & 1.5 & 120 & 0.00 & 114.3 & 0.2 & 120 & 0.01 & 0.01 & 114.3 & 3.2 \\
+    10 & 1 & 5 & 120 & 120 & 0.00 & 114.4 & 1.4 & 120 & 0.00 & 114.4 & 0.2 & 120 & 0.00 & 0.00 & 114.4 & 3.2 \\
+    \cmidrule{1-17}
+    10 & 2 & 0 & 120 & 120 & 0.00 & 113.2 & 1.6 & 120 & 0.00 & 113.2 & 0.2 & 120 & 0.00 & 0.00 & 113.2 & 3.3 \\
+    10 & 2 & 3 & 120 & 120 & 0.00 & 113.3 & 1.4 & 120 & 0.00 & 113.3 & 0.2 & 120 & 0.00 & 0.00 & 113.3 & 3.0 \\
+    10 & 2 & 5 & 120 & 120 & 0.00 & 113.3 & 1.4 & 120 & 0.00 & 113.3 & 0.2 & 120 & 0.00 & 0.00 & 113.3 & 3.0 \\
+    \cmidrule{1-17}
+    10 & 3 & 0 & 120 & 120 & 0.00 & 113.0 & 1.2 & 120 & 0.00 & 113.0 & 0.1 & 120 & 0.00 & 0.00 & 113.0 & 3.4 \\
+    10 & 3 & 3 & 120 & 120 & 0.00 & 113.1 & 1.0 & 120 & 0.00 & 113.1 & 0.1 & 120 & 0.00 & 0.00 & 113.1 & 3.1 \\
+    10 & 3 & 5 & 120 & 120 & 0.00 & 113.1 & 1.0 & 120 & 0.00 & 113.1 & 0.1 & 120 & 0.00 & 0.00 & 113.1 & 3.1 \\
+    \midrule
+    % ========== Instance 20 ==========
+    20 & 1 & 0 & 120 & 105 & 1.37 & 141.9 & 690.6 & 120 & 0.00 & 141.9 & 51.6 & 120 & 0.00 & 0.00 & 141.9 & 14.2 \\
+    20 & 1 & 3 & 120 & 103 & 1.39 & 142.3 & 749.6 & 120 & 0.00 & 142.3 & 75.4 & 120 & 0.00 & 0.00 & 142.3 & 14.6 \\
+    20 & 1 & 5 & 120 & 104 & 1.33 & 142.6 & 777.2 & 120 & 0.00 & 142.6 & 91.1 & 120 & 0.00 & 0.00 & 142.6 & 14.2 \\
+    \cmidrule{1-17}
+    20 & 2 & 0 & 120 & 102 & 2.44 & 139.8 & 764.9 & 120 & 0.00 & 139.8 & 69.2 & 120 & 0.00 & 0.00 & 139.8 & 15.7 \\
+    20 & 2 & 3 & 120 & 99 & 2.54 & 140.0 & 894.2 & 120 & 0.00 & 140.0 & 81.7 & 120 & 0.00 & 0.00 & 140.0 & 10.7 \\
+    20 & 2 & 5 & 120 & 99 & 2.48 & 140.1 & 976.8 & 120 & 0.00 & 140.1 & 77.0 & 120 & 0.00 & 0.00 & 140.1 & 10.7 \\
+    \cmidrule{1-17}
+    20 & 3 & 0 & 120 & 106 & 2.23 & 139.4 & 690.6 & 120 & 0.00 & 139.4 & 66.1 & 120 & 0.00 & 0.00 & 139.4 & 17.0 \\
+    20 & 3 & 3 & 120 & 104 & 2.56 & 139.4 & 751.1 & 120 & 0.00 & 139.4 & 102.4 & 120 & 0.00 & 0.00 & 139.4 & 11.9 \\
+    20 & 3 & 5 & 120 & 102 & 2.45 & 139.5 & 825.3 & 120 & 0.00 & 139.5 & 112.3 & 120 & 0.00 & 0.00 & 139.5 & 12.1 \\
+    \midrule
+
+
+    
+    % ========== Instance 30 ==========
+    30 & 4 & 0 & 27 & - & - & - & - & 24 & 0.02 & 129.0 & 407.2 & 24 & 0.00 & 0.00 & 129.0 & 57.5 \\
+    30 & 4 & 3 & 27 & - & - & - & - & 24 & 0.06 & 129.5 & 509.5 & 24 & 0.00 & 0.00 & 129.5 & 76.1 \\
+    30 & 4 & 5 & 27 & - & - & - & - & 23 & 0.17 & 129.8 & 551.2 & 23 & 0.00 & 0.00 & 129.8 & 44.5 \\
+    \midrule
+    
+    % ========== Instance 50 ==========
+    50 & 4 & 0 & 27 & - & - & - & - & 27 & 0.00 & 161.3 & 165.3 & 27 & 0.00 & 0.00 & 161.3 & 131.7 \\
+    50 & 4 & 3 & 27 & - & - & - & - & 19 & 0.12 & 162.0 & 1216.8 & \textbf{20} & \textbf{-0.02} & 0.00 & 162.0 & 88.6 \\
+    50 & 4 & 5 & 27 & - & - & - & - & 21 & 0.38 & 162.5 & 940.7 & 21 & \textbf{-0.02} & -0.02 & 162.5 & 80.8 \\
+    \midrule
+    
+    % ========== Instance 100 ==========
+    100 & 5 & 0 & 27 & - & - & - & - & 17 & 0.95 & 279.5 & 1702.3 & 17 & \textbf{-0.40} & -0.38 & 278.8 & 1861.0 \\
+    100 & 5 & 3 & 27 & - & - & - & - & 15 & 1.67 & 280.4 & 1836.5 & 15 & \textbf{-0.55} & -0.53 & 279.2 & 904.8 \\
+    100 & 5 & 5 & 27 & - & - & - & - & 17 & 1.58 & 281.9 & 1730.4 & 17 & \textbf{-0.92} & -0.89 & 279.6 & 900.9 \\
+    \bottomrule
+    \end{tabular}   
+\end{table}
+
+For $|C|=10$, both MILP and CP solve all 120 instances to proven optimality with zero optimality gap. HGS also matches these optimal solutions in all cases, confirming its correctness on small-scale instances. The average runtime of MILP is around $1.0$-$1.6$ seconds, and CP requires only about $0.1$-$0.2$ seconds. Meanwhile, HGS takes approximately $3.0$-$3.4$ seconds, which is expected for a metaheuristic algorithm.
+
+For $|C|=20$, HGS begins to show its clear computational advantage. Both CP and HGS consistently obtain optimal solutions for all 120 instances. In contrast, MILP only solves between 99 and 106 instances to optimality, with average optimality gaps ranging from $1.33\%$ to $2.56\%$ and runtimes increasing to around $690$-$980$ seconds. While CP is still efficient, its average runtime increases to between $51.6$ and $112.3$ seconds. Notably, HGS achieves the exact same optimal solutions within only $10.7$-$17.0$ seconds. This makes HGS roughly $40$-$90$ times faster than MILP, and it also outperforms CP in terms of speed, proving the algorithm's stability and scalability.
+
+From $|C|=30$ upward, MILP is no longer used due to scalability limitations, and CP becomes the reference exact method.
+For 30-customer instances, CP finds optimal solutions for $23$-$24$ out of $27$ instances, with very small reported gaps ($0.02\%$-$0.18\%$) and runtimes of approximately $400$-$750$ seconds. HGS matches these solutions ($0\%$ gap) within $45$-$76$ seconds, consistently providing equivalent solution quality with significantly lower computational effort.
+
+For $|C|=50$, CP proves optimality for $19$-$26$ instances, with an average optimality gap over all 27 less than $0.30\%$ and runtimes ranging from $327$ to $1,220$ seconds. 
+HGS slightly improves some CP upper bounds (down to $-0.02\%$) and maintains zero average gap, while reducing runtime to approximately $80$-$132$ seconds, yielding a substantial speedup.
+
+For the largest 100-customer instances, CP proves optimality for 18-19 instances, with average optimality gaps between $0.45\%$ and $0.71\%$, and runtimes around $1,460$-$1,500$ seconds. HGS consistently improves upon these upper bounds, achieving average gaps between $-0.33\%$ and $-0.25\%$. However, this improvement comes at the cost of longer runtimes ($900$-$1,860$ seconds), which can exceed CP in some configurations.
+
+Overall, the results show that exact methods (MILP and CP) are highly effective for small instances. CP remains competitive for medium- and large-scale instances, consistently providing very tight optimality gaps. The proposed HGS demonstrates strong robustness, consistently matching or improving CP solutions, particularly for instances with $|C| \geq 50$.
+
+\subsubsection{Results on the Energy-based Battery Swapping Model}
+\label{sec:performance_energy_based}
+
+\noindent
+In the energy-based battery swapping model, each drone has a limited energy capacity, and a battery swap is triggered when the remaining energy is insufficient for the next delivery. 
+Table~\ref{tab:performance_milp_cp_hgs_energy_based} reports the computational results of MILP, CP, and HGS on the energy-based battery swapping model.
+
+\begin{table}[H]
+    \centering
+    \setlength{\tabcolsep}{3pt} % Giảm khoảng cách chiều ngang giữa các cột
+    \renewcommand{\arraystretch}{0.95} % Giảm chiều cao của các hàng
+    \caption{Performance comparison between MILP, CP, and HGS on energy-based battery swapping model}
+    \label{tab:performance_milp_cp_hgs_energy_based}
+    \scriptsize
+    \begin{tabular}{cccc cccc cccc ccccc}
+    \toprule
+    \multirow{2}{*}{$|C|$} & 
+    \multirow{2}{*}{$|V|$} & 
+    \multirow{2}{*}{$\tau_{\text{swap}}$} & 
+    \multirow{2}{*}{\#Inst.} &
+    \multicolumn{4}{c}{MILP} & 
+    \multicolumn{4}{c}{CP} & 
+    \multicolumn{5}{c}{HGS} \\
+    \cmidrule(lr){5-8} \cmidrule(lr){9-12} \cmidrule(lr){13-17}
+    & & (min) & 
+    & \#Opt 
+    & $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$ 
+    & $\overline{C}$ 
+    & $\overline{T}$ 
+    & \#Opt 
+    & $\overline{\mathrm{GAP}}^{\mathrm{Opt}}$ 
+    & $\overline{C}$ 
+    & $\overline{T}$ 
+    & \#Opt 
+    & $\overline{\mathrm{GAP}}_{\text{Best}}$ 
+    & $\overline{\mathrm{GAP}}_{\text{Avg}}$ 
+    & $\overline{C}_{\text{Best}}$ 
+    & $\overline{T}$ \\
+    \midrule
+    
+        % ===== 2INDEX ENERGY =====
+    % ========== Instance 10 ==========
+    10 & 1 & 0 & 120 & 120 & 0.00 & 115.1 & 0.4 & 120 & 0.00 & 115.1 & 0.1 & 120 & 0.00 & 0.00 & 115.1 & 4.8 \\
+    10 & 1 & 3 & 120 & 120 & 0.00 & 115.2 & 0.5 & 120 & 0.00 & 115.2 & 0.1 & 120 & 0.00 & 0.00 & 115.2 & 4.8 \\
+    10 & 1 & 5 & 120 & 120 & 0.00 & 115.3 & 0.5 & 120 & 0.00 & 115.3 & 0.1 & 120 & 0.00 & 0.00 & 115.3 & 5.0 \\
+    \cmidrule{1-17}
+    10 & 2 & 0 & 120 & 120 & 0.00 & 114.5 & 0.4 & 120 & 0.00 & 114.5 & 0.1 & 120 & 0.00 & 0.00 & 114.5 & 5.0 \\
+    10 & 2 & 3 & 120 & 120 & 0.00 & 114.5 & 0.4 & 120 & 0.00 & 114.5 & 0.1 & 120 & 0.00 & 0.00 & 114.5 & 5.3 \\
+    10 & 2 & 5 & 120 & 120 & 0.00 & 114.6 & 0.4 & 120 & 0.00 & 114.6 & 0.1 & 120 & 0.00 & 0.00 & 114.6 & 5.2 \\
+    \cmidrule{1-17}
+    10 & 3 & 0 & 120 & 120 & 0.00 & 114.4 & 0.4 & 120 & 0.00 & 114.4 & 0.1 & 120 & 0.00 & 0.00 & 114.4 & 5.1 \\
+    10 & 3 & 3 & 120 & 120 & 0.00 & 114.4 & 0.4 & 120 & 0.00 & 114.4 & 0.1 & 120 & 0.00 & 0.00 & 114.4 & 5.4 \\
+    10 & 3 & 5 & 120 & 120 & 0.00 & 114.4 & 0.4 & 120 & 0.00 & 114.4 & 0.1 & 120 & 0.00 & 0.00 & 114.4 & 5.3 \\
+    \midrule
+    % ========== Instance 20 ==========
+    20 & 1 & 0 & 120 & 106 & 1.25 & 143.9 & 686.3 & 120 & 0.00 & 143.9 & 54.8 & 120 & 0.00 & 0.00 & 143.9 & 18.6 \\
+    20 & 1 & 3 & 120 & 107 & 1.23 & 144.1 & 682.6 & 120 & 0.00 & 144.1 & 63.8 & 120 & 0.00 & 0.00 & 144.1 & 18.8 \\
+    20 & 1 & 5 & 120 & 106 & 1.17 & 144.2 & 769.3 & 120 & 0.00 & 144.2 & 62.1 & 120 & 0.00 & 0.00 & 144.2 & 19.1 \\
+    \cmidrule{1-17}
+    20 & 2 & 0 & 120 & 108 & 1.66 & 142.3 & 630.6 & 120 & 0.00 & 142.3 & 76.6 & 120 & 0.00 & 0.00 & 142.3 & 19.8 \\
+    20 & 2 & 3 & 120 & 109 & 1.59 & 142.4 & 664.9 & 120 & 0.00 & 142.4 & 61.1 & 120 & 0.00 & 0.00 & 142.4 & 19.2 \\
+    20 & 2 & 5 & 120 & 103 & 1.94 & 142.5 & 773.5 & 120 & 0.00 & 142.5 & 67.6 & 120 & 0.00 & 0.00 & 142.5 & 19.7 \\
+    \cmidrule{1-17}
+    20 & 3 & 0 & 120 & 107 & 1.75 & 142.1 & 608.7 & 120 & 0.00 & 142.1 & 48.5 & 120 & 0.00 & 0.00 & 142.1 & 20.3 \\
+    20 & 3 & 3 & 120 & 105 & 1.97 & 142.1 & 697.6 & 120 & 0.00 & 142.1 & 47.4 & 120 & 0.00 & 0.00 & 142.1 & 20.4 \\
+    20 & 3 & 5 & 120 & 105 & 1.96 & 142.1 & 695.1 & 120 & 0.00 & 142.1 & 55.9 & 120 & 0.00 & 0.00 & 142.1 & 20.6 \\
+    \midrule
+
+
+    
+        % ========== Instance 30 ==========
+    30 & 4 & 0 & 27 & - & - & - & - & 23 & 0.36 & 123.5 & 546.4 & 23 & 0.00 & 0.00 & 123.5 & 20.3 \\
+    30 & 4 & 3 & 27 & - & - & - & - & 26 & 0.40 & 123.7 & 317.5 & 26 & 0.00 & 0.00 & 123.7 & 18.3 \\
+    30 & 4 & 5 & 27 & - & - & - & - & 25 & 0.49 & 123.9 & 590.7 & 25 & 0.00 & 0.00 & 123.9 & 18.3 \\
+    \midrule
+    
+    % ========== Instance 50 ========== 
+    50 & 4 & 0 & 27 & - & - & - & - & 26 & 0.00 & 154.4 & 520.1 & \textbf{27} & 0.00 & 0.00 & 154.4 & 75.5 \\
+    50 & 4 & 3 & 27 & - & - & - & - & 19 & 0.37 & 154.8 & 1666.6 & \textbf{20} & \textbf{-0.07} & -0.06 & 154.7 & 69.3 \\
+    50 & 4 & 5 & 27 & - & - & - & - & 15 & 0.43 & 155.2 & 1906.8 & \textbf{16} & \textbf{-0.05} & -0.03 & 155.1 & 68.8 \\
+    \midrule
+    
+    % ========== Instance 100 ==========
+    100 & 5 & 0 & 27 & - & - & - & - & 16 & 2.13 & 269.9 & 1721.0 & 16 & \textbf{-1.22} & -1.19 & 266.9 & 764.6 \\
+    100 & 5 & 3 & 27 & - & - & - & - & 13 & 2.25 & 269.7 & 2115.4 & 13 & \textbf{-1.19} & -1.17 & 267.2 & 585.6 \\
+    100 & 5 & 5 & 27 & - & - & - & - & 13 & 3.67 & 271.9 & 2102.4 & \textbf{14} & \textbf{-2.09} & -2.05 & 267.4 & 616.9 \\
+
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+For $|C|=10$, both exact methods (MILP and CP) successfully solve all 120 instances to proven optimality with a zero optimality gap. The proposed HGS perfectly matches these optimal solutions in all cases, confirming its mathematical correctness on small-scale problems under energy constraints. The average runtime of MILP is around $0.9$-$1.4$ seconds, CP requires about $0.1$ seconds, and HGS takes approximately $4.8$-$5.4$ seconds.
+
+For $|C|=20$, the combinatorial complexity begins to hinder MILP, which only proves optimality for 103 to 109 instances, yielding average gaps between $1.17\%$ and $1.97\%$ and runtimes of approximately $608$-$774$ seconds. Conversely, both CP and HGS consistently obtain optimal solutions for all 120 instances. While CP's average runtime increases to between $47.4$ and $76.6$ seconds, HGS achieves the exact same optimal quality within a reliable $18.6$-$20.6$ seconds, maintaining a strong computational advantage over MILP and demonstrating faster processing speeds than CP at this scale.
+
+From $|C|=30$ onward, MILP is no longer applied due to scalability limitations, and CP serves as the reference exact method. 
+For 30-customer instances, CP proves optimality for $23$-$25$ out of $27$ instances, with very small gaps ($0.42\%$-$0.50\%$) and runtimes of approximately $500$-$570$ seconds. 
+HGS matches or slightly improves these upper bounds (down to $-0.05\%$) within only $18$-$20$ seconds, showing a substantial computational advantage.
+
+For $|C|=50$, CP proves optimality for $14$-$27$ instances, with average optimality gaps smaller than $0.46\%$, but its runtime increases significantly when $\tau_{swap} > 0$ (up to $1,600$-$1,860$ seconds). In contrast, HGS consistently produces equal or better solutions (down to $-0.07\%$) while maintaining much lower runtimes ($68$-$75$ seconds).
+
+For the largest 100-customer instances, CP proves optimality for $11$-$18$ instances, with average optimality gaps increasing to $1.41\%$-$2.15\%$ and runtimes of approximately $1,700$-$2,300$ seconds. 
+HGS consistently improves upon these upper bounds, achieving average gaps between $-1.21\%$ and $-0.58\%$ and significantly reduced runtimes ($585$-$765$ seconds).
+
+Overall, the results indicate that the energy-based model becomes increasingly challenging for exact methods as the problem size grows, leading to larger optimality gaps and higher computational effort. In contrast, the proposed HGS demonstrates strong robustness and scalability, consistently matching or improving CP solutions, particularly for medium- and large-scale instances.
+
+Compared with the time-based model, the energy-based formulation is more challenging for exact methods, as reflected by the faster growth of optimality gaps and runtimes of CP with increasing problem size. In contrast, HGS remains robust across both models and consistently provides high-quality solutions.
+
+An additional observation concerns the impact of swap-time on computational effort.
+For CP, the introduction of swap-time leads to a noticeable increase in runtime, as additional temporal dependencies and scheduling constraints must be explicitly enforced.
+In contrast, the runtime of HGS remains relatively stable and, for medium- and large-scale instances, often decreases when $\tau_{swap} > 0$.
+
+A possible explanation is that swap-time introduces stronger dependencies between consecutive drone operations, making solution quality more sensitive to the ordering of service decisions.
+This increased sensitivity appears to provide clearer guidance during the search process, which may facilitate faster convergence for heuristic methods. In the context of HGS, this effect can be interpreted as a stronger dependence of solution quality on the ordering of customers in the drone sequence, allowing the decoding procedure to better discriminate between alternative solutions.
+At the same time, these additional dependencies increase the complexity of the scheduling problem, leading to higher computational effort for exact methods such as CP.
+
+In summary, both models exhibit consistent patterns. Exact methods are highly effective for small instances, while CP remains competitive for medium- and large-scale problems, often providing tight optimality gaps. The proposed HGS demonstrates strong robustness, consistently matching or slightly improving CP solutions, particularly for instances with $|C| \geq 50$. Moreover, HGS appears more stable with respect to increasing problem complexity, especially when additional scheduling constraints such as swap-time or energy-dependent consumption are introduced.
+
+\subsection{Value of Swap-Time Integration in Optimization}
+\label{sec:value_of_swap_time_integration}
+
+In practice, battery swapping requires non-negligible time, yet many  existing models implicitly neglect this duration by assuming instantaneous battery replacement. This raises a key modeling question:
+\textit{should battery swap-time be explicitly integrated into the optimization process, or can it be ignored and only accounted at the execution stage?}
+
+To address this question, we compare two approaches:
+\begin{itemize}
+    \item \emph{Re-evaluation}: Solutions are optimized under the idealized assumption of instantaneous battery swapping ($\tau_{swap}=0$) and then re-evaluated by inserting nonzero swap durations without modifying the original routes and schedules.
+    
+    \item \emph{Integrated}: Swap-time is explicitly incorporated into the optimization model, so that routes and schedules are optimized with swapping delays taken into account.
+
+\end{itemize}
+
+Based on the performance results reported in Section~\ref{sec:performance_all}, the solutions obtained by the proposed Hybrid Genetic Search (HGS) are used for the following analysis. 
+
+For each instance, three makespan values are considered:
+\begin{itemize}
+    \item (i) a baseline makespan $C_0$ is obtained by solving the instance with $\tau_{swap}=0$,
+    \item (ii) a re-evaluated makespan $C^{\text{Re-eval}}_{\tau_{swap}}$ is computed by inserting a swap-time $\tau_{swap} \in \{3,5\}$ minutes into the baseline solution without re-optimizing the routes and schedules, and
+    \item (iii) an integrated makespan $C^{\text{Int}}_{\tau_{swap}}$ is obtained by solving the instance again with swap-time $\tau_{swap}$ explicitly included in the optimization model.
+\end{itemize}
+
+To quantify the impact of swap-time, we define the relative makespan increase of the re-evaluated solutions as
+\begin{equation}
+\Delta^{\mathrm{Re\text{-}eval}}_{\tau_{swap}}
+=
+\frac{C^{\mathrm{Re\text{-}eval}}_{\tau_{swap}} - C_0}{C_0} \times 100\%.
+\end{equation}
+
+Similarly, the relative increase obtained with integrated optimization is defined as
+\begin{equation}
+\Delta^{\mathrm{Int}}_{\tau_{swap}}
+=
+\frac{C^{\mathrm{Int}}_{\tau_{swap}} - C_0}{C_0} \times 100\%.
+\end{equation}
+
+Finally, the effectiveness of swap-time integration is measured by the reduction ratio:
+\begin{equation}
+\rho_{\tau_{swap}}
+=
+\frac{
+\Delta^{\mathrm{Re\text{-}eval}}_{\tau_{swap}} - \Delta^{\mathrm{Int}}_{\tau_{swap}}
+}{
+\Delta^{\mathrm{Re\text{-}eval}}_{\tau_{swap}}
+}
+\times 100\%.
+\end{equation}
+
+
+\begin{table}[H]
+\centering
+\caption{Effect of integrating swap-time into optimization compared with re-evaluation.}
+\label{tab:swaptime_integration_effect}
+
+\scriptsize
+\subfloat[\textbf{Time-based battery swapping model}]{
+\begin{tabular}{rrrrrrr}
+\toprule
+$n_c$ &
+$\bar{\Delta}^{\mathrm{Re\text{-}eval}}_3$ (\%) &
+$\bar{\Delta}^{\mathrm{Int}}_3$ (\%) &
+$\bar{\Delta}^{\mathrm{Re\text{-}eval}}_5$ (\%) &
+$\bar{\Delta}^{\mathrm{Int}}_5$ (\%) &
+$\bar{\rho}_3$ (\%) &
+$\bar{\rho}_5$ (\%) \\
+\midrule
+10 & 0.92 & 0.14 & 2.12 & 0.21 & 85.3 & 90.0 \\
+20 & 2.70 & 0.24 & 5.80 & 0.42 & 89.7 & 92.5 \\
+30 & 5.05 & 0.61 & 9.84 & 0.94 & 91.6 & 93.2 \\
+50 & 5.66 & 0.50 & 10.53 & 0.83 & 93.9 & 94.6 \\
+100 & 4.83 & 0.23 & 9.43 & 0.40 & 97.1 & 97.4 \\
+\bottomrule
+\end{tabular}
+}
+\vspace{6pt}
+\\
+\subfloat[\textbf{Energy-based battery swapping model}]{
+\begin{tabular}{rrrrrrr}
+\toprule
+$n_c$ &
+$\bar{\Delta}^{\mathrm{Re\text{-}eval}}_3$ (\%) &
+$\bar{\Delta}^{\mathrm{Int}}_3$ (\%) &
+$\bar{\Delta}^{\mathrm{Re\text{-}eval}}_5$ (\%) &
+$\bar{\Delta}^{\mathrm{Int}}_5$ (\%) &
+$\bar{\rho}_3$ (\%) &
+$\bar{\rho}_5$ (\%) \\
+\midrule
+10 & 0.62 & 0.09 & 1.35 & 0.15 & 90.0 & 89.0 \\
+20 & 1.83 & 0.10 & 4.00 & 0.20 & 93.7 & 94.4 \\
+30 & 1.24 & 0.24 & 2.82 & 0.43 & 86.2 & 89.8 \\
+50 & 2.66 & 0.26 & 4.96 & 0.52 & 92.3 & 92.1 \\
+100 & 2.67 & 0.14 & 5.10 & 0.25 & 95.6 & 95.8 \\
+\bottomrule
+\end{tabular}
+}
+
+\vspace{1ex} % Tạo một chút khoảng trắng
+
+    \textit{Note:} The overline notation (e.g., $\bar{\Delta}$, $\bar{\rho}$) indicates the average value across all instances for a given $n_c$.
+
+\end{table}
+
+
+
+
+Table~\ref{tab:swaptime_integration_effect} shows that ignoring swap-time leads to systematic and non-negligible underestimation of the makespan. For instance, under the time-based model, re-evaluated solutions exhibit increases of up to $5.66$ and $10.53$ for $\tau_{swap}=3$ and $5$, respectively. Similar patterns are observed for the energy-based model. 
+
+In contrast, when swap-time is explicitly integrated, these increases are almost entirely eliminated. Across all instance sizes and both models, the relative increase in makespan remains below $1\%$ in most cases. Overall, integrating swap-time reduces the deviation by by approximately $85\%$-$97\%$.
+
+This result clearly indicates that the degradation is not primarily caused by the swapping operation itself, but by the failure to account for it during optimization. When swap-time is ignored, the resulting schedules systematically underestimate the true completion time. By contrast, explicitly integrating swap-time allows routing and scheduling decisions to absorb most of their impact.
+
+Therefore, swap-time should be considered in multi-trip drone delivery systems to ensure accurate and robust solutions.
+
+
+% \paragraph{Statistical consistency}
+% The advantage of integrating swap-time into the optimization process over post-optimization
+% re-evaluation is consistent across the full set of 801 instances.
+% Paired statistical tests confirm that the reductions in relative makespan increase are
+% statistically significant for both $\tau_{swap}=3$ and $\tau_{swap}=5$ under the time-based
+% and energy-based models (Table~\ref{tab:statistical_tests_swaptime}).
+% These results indicate that the observed differences are consistently present across
+% instances and are not driven by a small number of extreme cases.
+
+
+% \begin{table}[htbp]
+% \centering
+% \caption{Statistical comparison of re-evaluated and integrated makespan increases.}
+% \label{tab:statistical_tests_swaptime}
+% \scriptsize
+% \begin{tabular}{lrrrrrrrrr}
+% \toprule
+% Model & $\tau_{swap}$ & $n$ &
+% $\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ (\%) &
+% $\bar{\Delta}^{\mathrm{Int}}$ (\%) &
+% $\bar{\rho}$ (\%) &
+% $p$ & $p_{W}$ &
+% $d$ & $r_{\mathrm{b}}$ \\
+% \midrule
+% Time-based & 3 & 801 & 2.15 & 0.22 & 89.9 & $<0.001$ & $<0.001$ & 0.62 & 0.63 \\
+% Time-based & 5 & 801 & 4.56 & 0.36 & 92.1 & $<0.001$ & $<0.001$ & 0.73 & 0.71 \\
+% Energy-based & 3 & 801 & 1.04 & 0.11 & 89.3 & $<0.001$ & $<0.001$ & 0.46 & 0.44 \\
+% Energy-based & 5 & 801 & 2.17 & 0.20 & 90.8 & $<0.001$ & $<0.001$ & 0.52 & 0.49 \\
+% \bottomrule
+% \end{tabular}
+
+% \vspace{3pt}
+% \footnotesize
+% \textit{Notes.}
+% $\tau_{swap}$ denotes the swap-time (minutes).
+% $\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ and $\bar{\Delta}^{\mathrm{Int}}$
+% are the average relative makespan increases with respect to the baseline $C_0$.
+% $\bar{\rho}$ denotes the average reduction achieved by integrating swap-time into the optimization.
+% $p$ and $p_W$ correspond to the paired $t$-test and the Wilcoxon signed-rank test, respectively.
+% $d$ is Cohen's $d$ effect size and $r_{\mathrm{b}}$ is the rank-biserial correlation.
+% All tests are conducted on paired samples for each model and swap-time level.
+% \end{table}
+
+\subsection{Sensitivity Analysis}
+\label{sec:sensitivity_alalysis}
+
+While the previous section demonstrated the necessity of explicitly modeling battery swap-time, it remains important to assess whether this finding is sensitive to the level of resource availability. Therefore, we conduct a sensitivity analysis by varying the maximum flight time $T_{\max}$ in the time-based model and the maximum available energy $E_{\max}$ in the energy-based model by $\pm 20\%$ around their baseline values.
+
+For each configuration, each instance is solved using HGS with 10 independent runs. All reported statistics are computed at the run level (i.e., each run is treated as an observation) and then averaged over all runs and instances. 
+
+
+\begin{table}[H]
+\centering
+\caption{Sensitivity to maximum flight time under different swap-times (time-based model).}
+\label{tab:sensitivity_flight_time}
+\scriptsize
+\begin{tabular}{lcccccc}
+\toprule
+& \multicolumn{3}{c}{$\tau_{swap}=3$} &
+  \multicolumn{3}{c}{$\tau_{swap}=5$} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7}
+$T_{\max}$ &
+$\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ &
+$\bar{\Delta}^{\mathrm{Int}}$ &
+$\bar{\rho}$ &
+$\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ &
+$\bar{\Delta}^{\mathrm{Int}}$ &
+$\bar{\rho}$ \\
+\midrule
+$0.8\,T_{\max}^{0}$ & 1.79 & 0.13 & 93.84 & 3.80 & 0.21 & 95.84 \\
+$T_{\max}^{0}$     & 2.15 & 0.22 & 89.51 & 4.56  & 0.36 & 92.29 \\
+$1.2\,T_{\max}^{0}$ & 2.28 & 0.36 & 85.50 & 4.74  & 0.56 & 88.56 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Sensitivity to maximum energy capacity under different swap-times (energy-based model).}
+\label{tab:sensitivity_energy}
+\scriptsize
+\begin{tabular}{lcccccc}
+\toprule
+& \multicolumn{3}{c}{$\tau_{swap}=3$} &
+  \multicolumn{3}{c}{$\tau_{swap}=5$} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7}
+$E_{\max}$ &
+$\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ &
+$\bar{\Delta}^{\mathrm{Int}}$ &
+$\bar{\rho}$ &
+$\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ &
+$\bar{\Delta}^{\mathrm{Int}}$ &
+$\bar{\rho}$ \\
+\midrule
+$0.8\,E_{\max}^{0}$ & 1.19 & 0.08 & 94.65 & 2.55 & 0.15 & 94.35 \\
+$E_{\max}^{0}$     & 1.32 & 0.11 & 92.32 & 2.84 & 0.20 & 92.65 \\
+$1.2\,E_{\max}^{0}$ & 1.47 & 0.36 & 75.58 & 3.18 & 0.59 & 79.25 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Across both models, a clear and consistent pattern emerges: as resource levels increase, the deviation obtained when swap-time is ignored becomes larger, whereas the deviation remains very small when swap-time is explicitly integrated into the optimization.
+
+\newpage
+In the time-based model (Table~\ref{tab:sensitivity_flight_time}), $\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ increases from $1.79\%$ to $2.28\%$ for $\tau_{swap}=3$, and from $3.80\%$ to $4.74\%$ for $\tau_{swap}=5$. 
+Similarly, in the energy-based model (Table~\ref{tab:sensitivity_energy}), the deviation increases from $1.19\%$ to $1.47\%$ for $\tau_{swap}=3$, and from $2.55\%$ to $3.18\%$ for $\tau_{swap}=5$. 
+Notably, both models exhibit a similar increasing trend, although the magnitude of the increase is slightly larger in the time-based model.
+
+In contrast, when swap-time is explicitly integrated, the deviations $\bar{\Delta}^{\mathrm{Int}}$ remain below $0.6\%$ across all configurations. 
+As a result, the reduction ratio $\bar{\rho}$ remains consistently high, above $85\%$ in the time-based model and above $75\%$ in the energy-based model, often exceeding $90\%$.
+
+These results reinforce the main finding: increasing resource availability does not mitigate the impact of ignoring swap-time. 
+On the contrary, it increases the level of underestimation, while explicit integration helps reduce this effect significantly.
+
+
+To explain this behavior, we analyze how swap-time interacts with the system structure. Since swap-time only affects drone operations, its impact on the makespan depends on two factors: 
+\begin{itemize}
+    \item (i) the slack $T_{\text{truck}} - T_{\text{drone}}^{\max}$, which determines the system’s ability to absorb additional delays, and
+    \item (ii) the probability that the drone determines the makespan, denoted by $P(\text{Drone})$.
+\end{itemize}
+ 
+Tables~\ref{tab:mechanism_time} and~\ref{tab:mechanism_energy} report the average slack $\overline{Slack}$, $P(\text{Drone})$, and the average deviation $\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ by bottleneck type.
+Across both models, increasing resource levels leads to a reduction in $\overline{Slack}$ and a higher $P(\text{Drone})$. 
+As a result, the system becomes both less capable of absorbing swap-time and more likely to be directly affected by it, which explains the observed increase in deviation.
+
+\begin{table}[H]
+\centering
+\caption{Slack, bottleneck probability, and re-evaluated deviation by bottleneck type (time-based model).}
+\label{tab:mechanism_time}
+\scriptsize
+\begin{tabular}{lccccccc}
+\toprule
+$T_{\max}$ 
+& $\overline{Slack}$ (min) 
+& $P(\text{Drone})$ (\%) 
+& \multicolumn{2}{c}{$\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ ($\tau=3$)} 
+& \multicolumn{2}{c}{$\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ ($\tau=5$)} \\
+\cmidrule(lr){4-5} \cmidrule(lr){6-7}
+ &  &  & Truck-bottleneck & Drone-bottleneck 
+ & Truck-bottleneck & Drone-bottleneck \\
+\midrule
+$0.8\,T_{\max}^{0}$ & 78.6 & 1.17 & 1.67 & 11.84 & 3.61 & 19.74 \\
+$T_{\max}^{0}$      & 50.9 & 2.52 & 1.95 & 9.63  & 4.27 & 16.06 \\
+$1.2\,T_{\max}^{0}$ & 37.4 & 5.42 & 1.97 & 7.59  & 4.29 & 12.63 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{table}[H]
+\centering
+\caption{Slack, bottleneck probability, and re-evaluated deviation by bottleneck type (energy-based model).}
+\label{tab:mechanism_energy}
+\scriptsize
+\begin{tabular}{lccccccc}
+\toprule
+$E_{\max}$ 
+& $\overline{Slack}$ (min) 
+& $P(\text{Drone})$ (\%) 
+& \multicolumn{2}{c}{$\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ ($\tau=3$)} 
+& \multicolumn{2}{c}{$\bar{\Delta}^{\mathrm{Re\text{-}eval}}$ ($\tau=5$)} \\
+\cmidrule(lr){4-5} \cmidrule(lr){6-7}
+ &  &  & Truck-bottleneck & Drone-bottleneck 
+ & Truck-bottleneck & Drone-bottleneck \\
+\midrule
+$0.8\,E_{\max}^{0}$ & 70.4 & 1.25 & 1.11 & 7.55 & 2.43 & 12.61 \\
+$E_{\max}^{0}$      & 57.3 & 2.51 & 1.18 & 6.76 & 2.62 & 11.30 \\
+$1.2\,E_{\max}^{0}$ & 11.5 & 12.70 & 1.19 & 3.35 & 2.75 & 5.71 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+The difference between the two models lies in the magnitude of these effects. 
+In the time-based model, $\overline{Slack}$ decreases moderately while $P(\text{Drone})$ remains low, so the increase in deviation is mainly driven by reduced buffering capacity. 
+In contrast, in the energy-based model, $\overline{Slack}$ decreases sharply (from $70.4$ to $11.5$ minutes), leading to a substantial increase in $P(\text{Drone})$ (up to $12.70\%$). This indicates a structural shift toward drone-dominated solutions, where swap-time directly determines the makespan. 
+
+Although the deviation within drone-bottleneck runs decreases in both models as resource levels increase, due to the improved operational flexibility of drones, this effect is dominated by the combination of smaller slack and a higher probability of drone-bottleneck runs, resulting in a larger overall deviation.
+
+
+\section{Conclusions}
+\label{sec:conclusions}
+
+This paper investigates the impact of battery swap-time in the Parallel Drone Scheduling Traveling Salesman Problem (PDSTSP).
+We develop two modeling formulations: a time-based model and an energy-based model,
+allowing swap-time to be incorporated either implicitly through re-evaluation
+or explicitly within the optimization process.
+
+To solve the resulting problems, we employ three complementary approaches:
+a mixed-integer linear programming (MILP) formulation,
+a constraint programming (CP) model,
+and a hybrid genetic search (HGS) algorithm.
+The exact methods provide optimal or near-optimal benchmarks for small instances,
+while the HGS efficiently scales to larger problem sizes and enables extensive sensitivity analysis.
+
+Across all computational experiments,
+we observe that ignoring swap-time during optimization leads to systematic underestimation of the makespan
+when solutions are re-evaluated under realistic swapping operations.
+In contrast, explicitly integrating swap-time produces solutions that remain stable and consistent.
+This pattern holds for both time-based and energy-based formulations
+and under varying levels of flight time and energy capacity.
+
+The results provide a clear answer to the central question of this study:
+battery swap-time should be explicitly integrated into PDSTSP models.
+Its effect is not marginal, but directly influences the synchronization between truck and drone operations
+in the makespan objective.
+
+Future research may extend this framework to other truck–drone routing variants,
+including synchronized launch–recovery models, multiple-truck systems,
+time-window constraints, and stochastic travel or energy conditions.
+
+% \bibliographystyle{plain}
+\bibliographystyle{apalike}
+\bibliography{pdstsp}
+\end{document}

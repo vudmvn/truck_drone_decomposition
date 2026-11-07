@@ -39,6 +39,8 @@ set(BBCP_SOURCES
     src/slave/SingleDroneOrderingMILPSlave.cpp
     src/slave/SlaveSolverFactory.cpp
 
+    src/cp/AnonymousCPModel.cpp
+
     src/heuristics/InitialSolution.cpp
     src/heuristics/LocalSearch.cpp
     src/heuristics/TruckTwoOpt.cpp

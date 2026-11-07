@@ -6,7 +6,9 @@
 #include <utility>
 
 #include "bbcp/master/MasterProblem.h"
+#include "bbcp/cp/AnonymousCPModel.h"
 #include "bbcp/io/DataReader.h"
+#include "bbcp/io/ResultWriter.h"
 #include "bbcp/core/Options.h"
 
 namespace {
@@ -127,11 +129,14 @@ int main(int argc, char** argv) {
         if (pos.size()>8) options.slave_solver=ParseSlaveSolverType(pos[8]);
         if (pos.size()>9) options.assignment_mode=ParseMasterAssignmentMode(pos[9]);
 
+        std::string solver_model = "decomposition";
+
         for (const auto& flag:flags) {
             const std::string& name=flag.first;
             const std::string& val=flag.second;
             if (name=="--assignment" || name=="--assignment-mode")
                 options.assignment_mode=ParseMasterAssignmentMode(val);
+            else if (name=="--model") solver_model = val;
             else if (name=="--slave") options.slave_solver=ParseSlaveSolverType(val);
             else if (name=="--truck") options.subtour_mode=ParseMasterSubtourMode(val);
             else if (name=="--branching") options.branching_strategy=ParseMasterBranchingStrategy(val);
@@ -173,6 +178,40 @@ int main(int argc, char** argv) {
 
         Instance inst=ReadInstanceFromFile(filepath,read_options);
         if(inst.n_drones<=0) throw std::invalid_argument("Instance must have K>=1");
+        if (solver_model == "cp-2index" || solver_model == "cp-anonymous" || solver_model == "monolithic-cp" || solver_model == "cp") {
+            AnonymousCPOptions cp_opts;
+            cp_opts.time_limit_seconds = options.time_limit_seconds;
+            cp_opts.num_search_workers = 8;
+            cp_opts.enable_lipschitz = true;
+            cp_opts.enable_symmetry_breaking = true;
+            cp_opts.enable_pair_cuts = true;
+            cp_opts.enable_energy_cover = true;
+            cp_opts.log_search = options.verbose;
+
+            std::cout << "[CONFIG] model=cp-2index-anonymous K=" << inst.n_drones
+                      << " time_limit=" << cp_opts.time_limit_seconds << "s\n";
+            std::cout << "[ENHANCEMENTS] lipschitz_bounds=on energy_cover=on symmetry_breaking=on pair_cuts=on\n";
+
+            AnonymousCPModel cp_solver(inst, cp_opts);
+            FullSolution sol = cp_solver.Solve();
+            if (sol.feasible) {
+                sol.stats.best_valid_ub = sol.objective;
+                std::cout << "\n=== 2-Index Anonymous CP-SAT finished ===\n";
+                std::cout << "Best valid UB: " << sol.objective << "\n";
+                ResultWriter::WriteCSV(options.result_file, inst, options, sol);
+                ResultWriter::WriteSolutionText("results/solutions/solution.txt", inst, sol);
+                if (!options.sqlite_db_path.empty()) {
+                    ResultWriter::WriteSQLite(options.sqlite_db_path, inst, options, sol);
+                }
+                std::cout << "[RESULT] feasible UB=" << sol.objective
+                          << " master_status=" << (sol.feasible ? 2 : 11)
+                          << " LB=" << sol.stats.lower_bound << "\n";
+                return 0;
+            }
+            std::cout << "[STATUS] CP-SAT stopped without solution.\n";
+            return 3;
+        }
+
         std::cout<<"[CONFIG] assignment="<<MasterAssignmentModeName(options.assignment_mode)
                  <<" slave="<<SlaveSolverTypeName(options.slave_solver)
                  <<" truck="<<MasterSubtourModeName(options.subtour_mode)
