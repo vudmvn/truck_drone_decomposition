@@ -12,7 +12,7 @@ namespace bbcp {
 // SingleDroneOrderingSlave so that the project remains buildable.
 class SingleDroneOrderingCPSatSlave : public ISlaveSolver {
 public:
-    explicit SingleDroneOrderingCPSatSlave(const Instance& inst);
+    explicit SingleDroneOrderingCPSatSlave(const Instance& inst, int requested_drones = 0);
 
     SlaveResult Solve(
         const std::vector<Node>& drone_customers,
@@ -23,6 +23,7 @@ public:
 
 private:
     const Instance& inst_;
+    int requested_drones_ = 0; // 1 for explicit mode; 0 means K for slave-assign
 };
 
 }  // namespace bbcp

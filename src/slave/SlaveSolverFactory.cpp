@@ -8,32 +8,36 @@
 
 namespace bbcp {
 
-std::unique_ptr<ISlaveSolver>
-CreateSlaveSolver(const Instance& inst, SlaveSolverType type) {
-    switch (type) {
-    case SlaveSolverType::CP:
-#ifdef BBCP_WITH_ORTOOLS
-        // Default exact slave for the new decomposition.
-        return std::make_unique<SingleDroneOrderingCPSatSlave>(inst);
-#else
-        // OR-Tools was not compiled in. Since v6+ always requires Gurobi,
-        // keep the method exact by using the Gurobi one-drone MILP slave
-        // instead of returning UNKNOWN from a missing CP-SAT backend.
-        return std::make_unique<SingleDroneOrderingMILPSlave>(inst);
-#endif
+std::unique_ptr<ISlaveSolver> CreateSlaveSolver(
+    const Instance& inst, SlaveSolverType type, MasterAssignmentMode assignment_mode) {
+    if (inst.n_drones <= 0) {
+        throw std::invalid_argument("Number of drones must be >= 1");
+    }
 
-    case SlaveSolverType::MILP:
-        return std::make_unique<SingleDroneOrderingMILPSlave>(inst);
-
-    case SlaveSolverType::SingleDroneOrdering:
+    if (assignment_mode == MasterAssignmentMode::SlaveAssign) {
+        if (type == SlaveSolverType::MILP) {
+            throw std::invalid_argument(
+                "Unsupported combination: slave-assign+milp; "
+                "existing MILP solves one drone only. Use --slave cp.");
+        }
 #ifdef BBCP_WITH_ORTOOLS
-        return std::make_unique<SingleDroneOrderingCPSatSlave>(inst);
+        return std::make_unique<SingleDroneOrderingCPSatSlave>(inst, 0);
 #else
-        return std::make_unique<SingleDroneOrderingMILPSlave>(inst);
+        throw std::runtime_error(
+            "slave-assign requires OR-Tools K-drone CP-SAT. "
+            "Build with -DBBCP_WITH_ORTOOLS=ON; no silent fallback.");
 #endif
     }
 
-    throw std::runtime_error("Unknown slave solver type");
+    if (type == SlaveSolverType::MILP) {
+        return std::make_unique<SingleDroneOrderingMILPSlave>(inst);
+    }
+#ifdef BBCP_WITH_ORTOOLS
+    return std::make_unique<SingleDroneOrderingCPSatSlave>(inst, 1);
+#else
+    throw std::runtime_error(
+        "explicit+cp requires OR-Tools. Use --slave milp or rebuild with OR-Tools.");
+#endif
 }
 
-}  // namespace bbcp
+} // namespace bbcp

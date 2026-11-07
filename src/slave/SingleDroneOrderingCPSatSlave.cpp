@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -16,11 +17,11 @@
 
 namespace bbcp {
 
-SingleDroneOrderingCPSatSlave::SingleDroneOrderingCPSatSlave(const Instance& inst)
-    : inst_(inst) {}
+SingleDroneOrderingCPSatSlave::SingleDroneOrderingCPSatSlave(const Instance& inst, int requested_drones)
+    : inst_(inst), requested_drones_(requested_drones) {}
 
 const char* SingleDroneOrderingCPSatSlave::Name() const {
-    return "k-drone-ordering-cpsat";
+    return requested_drones_ == 1 ? "one-drone-ordering-cpsat" : "k-drone-ordering-cpsat";
 }
 
 namespace {
@@ -39,12 +40,12 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
     SlaveResult res;
 
     const int m = static_cast<int>(drone_customers.size());
-    const int K = inst_.n_drones;
+    const int K = requested_drones_ > 0 ? requested_drones_ : inst_.n_drones;
+    const int H = std::min(K, m); // number of nonempty drone chains
 
-    // User-requested guard: the K-route slave is used only when there are at
-    // least K selected drone customers. In the intended data setting, this is
-    // always true. If not, return a zero drone makespan and do not build CP-SAT.
-    if (m == 0 || m < K || K <= 0) {
+    // Empty work set is the ONLY case with zero drone makespan.
+    // For 0 < m < K, use H=m nonempty chains and K-H idle drones.
+    if (m == 0) {
         res.feasible = true;
         res.optimal = true;
         res.objective = 0;
@@ -55,7 +56,7 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
         return res;
     }
 
-    if (inst_.battery_capacity <= 0) {
+    if (K <= 0 || inst_.battery_capacity <= 0) {
         res.proven_infeasible = true;
         return res;
     }
@@ -78,6 +79,24 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
         total_work += inst_.DroneRoundTripTime(i);
         total_energy += inst_.energy[i];
         max_single = std::max(max_single, inst_.DroneRoundTripTime(i));
+    }
+
+    if (K == 1 && inst_.swap_time == 0) {
+        if (options.makespan_cutoff >= 0 && total_work > options.makespan_cutoff) {
+            res.proven_infeasible = true;
+            res.lower_bound = total_work;
+            res.lower_bound_valid = true;
+            return res;
+        }
+        res.feasible = true;
+        res.optimal = true;
+        res.objective = total_work;
+        res.lower_bound = total_work;
+        res.lower_bound_valid = true;
+        res.chains.assign(1, drone_customers);
+        res.swap_before.assign(1, std::vector<int>(m, 1));
+        if (!res.swap_before.front().empty()) res.swap_before.front().front() = 0;
+        return res;
     }
 
     const int64_t min_cycles = SafeCeilDiv(total_energy, inst_.battery_capacity);
@@ -105,7 +124,7 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
     using namespace operations_research;
     using namespace operations_research::sat;
 
-    const int64_t max_swaps = std::max(0, m - K);
+    const int64_t max_swaps = std::max(0, m - H);
     const int64_t natural_horizon = total_work + inst_.swap_time * max_swaps;
     const int64_t horizon =
         (options.makespan_cutoff >= 0)
@@ -157,7 +176,7 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
         cp.AddLessOrEqual(z, options.makespan_cutoff);
     }
 
-    // Exactly K non-empty routes.
+    // Exactly H=min(K,m) non-empty routes; K-H drones may remain idle.
     {
         LinearExpr sum_heads;
         LinearExpr sum_tails;
@@ -165,8 +184,8 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
             sum_heads += head[p];
             sum_tails += tail[p];
         }
-        cp.AddEquality(sum_heads, K);
-        cp.AddEquality(sum_tails, K);
+        cp.AddEquality(sum_heads, H);
+        cp.AddEquality(sum_tails, H);
     }
 
     // The smallest-index drone customer is the head of one chain.
@@ -208,7 +227,7 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
                 internal_arcs += u[p][q];
             }
         }
-        cp.AddEquality(internal_arcs, m - K);
+        cp.AddEquality(internal_arcs, m - H);
     }
 
     for (int p = 0; p < m; ++p) {
@@ -242,6 +261,10 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
             //     u_ij = 0 if i > j unless there is a swap before j.
             // Equivalent CP form: u_ij => s_j when i > j.
             if (i > j) {
+                cp.AddEquality(swap_before[q], 1).OnlyEnforceIf(u[p][q]);
+            }
+            // Redundant, but propagates battery incompatibility early.
+            if (inst_.energy[i] + inst_.energy[j] > inst_.battery_capacity) {
                 cp.AddEquality(swap_before[q], 1).OnlyEnforceIf(u[p][q]);
             }
 
@@ -312,8 +335,25 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
 
     res.wall_time = response.wall_time();
 
+    // Preserve certified solver bounds even on a time-limited UNKNOWN.
+    // We retain the analytic LB and only improve it using the CP-SAT dual bound.
+    if (response.status() != CpSolverStatus::MODEL_INVALID) {
+        const double dual = response.best_objective_bound();
+        if (std::isfinite(dual) && dual >= 0.0 &&
+            dual <= static_cast<double>(std::numeric_limits<int64_t>::max() / 8)) {
+            const int64_t bound = static_cast<int64_t>(std::ceil(dual - 1e-7));
+            res.lower_bound = std::max(res.lower_bound, bound);
+            res.lower_bound_valid = true;
+        }
+    }
+
     if (response.status() == CpSolverStatus::INFEASIBLE) {
         res.proven_infeasible = true;
+        // Infeasibility under a deadline only certifies phi(D) >= deadline+1.
+        if (options.makespan_cutoff >= 0) {
+            res.lower_bound = std::max(res.lower_bound, options.makespan_cutoff + 1);
+            res.lower_bound_valid = true;
+        }
         return res;
     }
 
@@ -331,7 +371,7 @@ SlaveResult SingleDroneOrderingCPSatSlave::Solve(
         res.lower_bound = res.objective;
         res.lower_bound_valid = true;
     } else {
-        res.lower_bound = static_cast<int64_t>(std::ceil(response.best_objective_bound()));
+        // Dual bound already extracted above; preserve the strongest LB.
         res.lower_bound_valid = true;
     }
 

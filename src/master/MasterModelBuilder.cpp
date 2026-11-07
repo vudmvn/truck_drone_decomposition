@@ -241,7 +241,7 @@ namespace bbcp
 
                     // 3. No-good from incumbent UB for pairs that cannot be
                     // assigned together to one drone in any improving solution.
-                    if (rhs >= ub - 1e-6)
+                    if (rhs > ub + 1e-6)
                     {
                         model.addConstr(
                             data.a[i][k] + data.a[j][k] <= 1.0,
@@ -706,7 +706,7 @@ namespace bbcp
         // eliminated lazily in MasterCallback at integer solutions.
         if (options_.subtour_mode == MasterSubtourMode::MTZ)
         {
-            const double M = static_cast<double>(std::max(1, inst_.n));
+            const double M = static_cast<double>(std::max(1, inst_.n + 1));
 
             for (Node i = 1; i <= inst_.n; ++i)
             {

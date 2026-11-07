@@ -75,8 +75,8 @@ namespace bbcp
 
         bool enable_mipnode_cuts = false;
 
-        bool enable_dynamic_ub_workload_usercut = true;
-        bool enable_dynamic_ub_energy_workload_usercut = true;
+        bool enable_dynamic_ub_workload_usercut = false; // unsafe without a global cutoff proof
+        bool enable_dynamic_ub_energy_workload_usercut = false; // same
         double dynamic_ub_workload_usercut_min_improvement = 1.0;
 
         // ------------------------------------------------------------
@@ -87,7 +87,7 @@ namespace bbcp
         bool enable_slave_assign_aggregate_drone_usercuts = true;
         bool enable_slave_assign_energy_cover_usercuts = true;
         bool enable_slave_assign_workload_usercuts = true;
-        bool enable_slave_assign_ub_incompatibility_usercuts = true;
+        bool enable_slave_assign_ub_incompatibility_usercuts = false; // UB no-good not globally valid
         bool enable_slave_assign_activated_truck_sec_usercuts = false;
 
         int slave_assign_usercut_max_cuts_per_node = 20;

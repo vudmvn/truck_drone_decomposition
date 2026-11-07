@@ -12,6 +12,50 @@
 namespace bbcp
 {
 
+namespace {
+
+bool ValidateDecodedSlaveSchedule(const Instance& inst,
+                                  const std::vector<Node>& expected,
+                                  const SlaveResult& result,
+                                  int max_chains) {
+    if (!result.feasible || result.objective < 0 ||
+        static_cast<int>(result.chains.size()) > max_chains ||
+        result.swap_before.size() != result.chains.size()) return false;
+
+    std::vector<Node> actual;
+    int64_t makespan = 0;
+    for (size_t k=0; k<result.chains.size(); ++k) {
+        const auto& chain = result.chains[k];
+        const auto& swaps = result.swap_before[k];
+        if (swaps.size() != chain.size()) return false;
+        int64_t battery = inst.battery_capacity;
+        int64_t time = 0;
+        for (size_t p=0; p<chain.size(); ++p) {
+            const Node i = chain[p];
+            if (!inst.IsCustomer(i) || !inst.IsDroneFeasible(i)) return false;
+            if (swaps[p] != 0 && swaps[p] != 1) return false;
+            if (p == 0 && swaps[p] != 0) return false;
+            if (swaps[p] == 1) {
+                battery = inst.battery_capacity;
+                time += inst.swap_time;
+            }
+            if (battery < inst.energy[i]) return false;
+            battery -= inst.energy[i];
+            time += inst.DroneRoundTripTime(i);
+            actual.push_back(i);
+        }
+        makespan = std::max(makespan,time);
+    }
+    std::vector<Node> sorted_expected = expected;
+    std::sort(sorted_expected.begin(),sorted_expected.end());
+    std::sort(actual.begin(),actual.end());
+    return actual == sorted_expected &&
+           static_cast<double>(makespan) <= static_cast<double>(result.objective)+1e-6;
+}
+
+} // namespace
+
+
     MasterCallback::MasterCallback(
         const Instance &inst,
         const MasterOptions &options,
@@ -312,10 +356,12 @@ namespace bbcp
         catch (const GRBException &e)
         {
             std::cerr << "[CALLBACK-GUROBI-ERROR] " << e.getMessage() << "\n";
+            abort();
         }
         catch (const std::exception &e)
         {
             std::cerr << "[CALLBACK-ERROR] " << e.what() << "\n";
+            abort();
         }
     }
 
@@ -2107,7 +2153,7 @@ namespace bbcp
             if (std::isfinite(best_valid_ub_))
             {
                 slave_cutoff =
-                    static_cast<int64_t>(std::floor(best_valid_ub_ - 1.0 + 1e-9));
+                    static_cast<int64_t>(std::ceil(best_valid_ub_ - 1e-9) - 1);
 
                 if (slave_opts.makespan_cutoff >= 0)
                 {
@@ -2132,12 +2178,21 @@ namespace bbcp
 
                 if (r.proven_infeasible && std::isfinite(best_valid_ub_))
                 {
-                    // The set S cannot be served by one drone under UB-1.
-                    // Since drones are identical, forbid this set on every drone.
-                    AddBroadcastDroneNoGoodCut(S);
-                    AddBroadcastDroneSubsetLowerBoundCut(S, best_valid_ub_);
+                    // Deadline INFEASIBLE is NOT global infeasibility.
+                    // A certified integer deadline T implies phi(S)>=T+1.
+                    if (slave_opts.makespan_cutoff >= 0) {
+                        AddBroadcastDroneSubsetLowerBoundCut(
+                            S, static_cast<double>(slave_opts.makespan_cutoff + 1));
+                    } else {
+                        std::cerr << "[ERROR] Unrestricted slave INFEASIBLE; "
+                                     "cannot safely generate a cutoff no-good.\n";
+                        abort();
+                        return;
+                    }
                 }
-                else if (r.lower_bound_valid)
+                else if (r.lower_bound_valid &&
+                         static_cast<double>(r.lower_bound) >
+                             getSolution(data_.zK[k]) + 1e-6)
                 {
                     AddBroadcastDroneSubsetLowerBoundCut(S, static_cast<double>(r.lower_bound));
                 }
@@ -2153,6 +2208,12 @@ namespace bbcp
                 continue;
             }
 
+            if (!ValidateDecodedSlaveSchedule(inst_, S, r, 1)) {
+                std::cerr << "[ERROR] Invalid one-drone slave schedule: "
+                             "missing/duplicate customer, swap, or duration.\n";
+                abort();
+                return;
+            }
             drone_values[k] = static_cast<double>(r.objective);
             schedule.makespan = std::max(schedule.makespan, drone_values[k]);
 
@@ -2172,6 +2233,16 @@ namespace bbcp
             }
 
             const double zK_master = getSolution(data_.zK[k]);
+            if (static_cast<double>(r.objective) > zK_master + 1e-6 &&
+                !r.optimal &&
+                (!r.lower_bound_valid ||
+                 static_cast<double>(r.lower_bound) <= zK_master + 1e-6)) {
+                unresolved_invalid_candidate = true;
+                unresolved_drone = k;
+                unresolved_slave_obj = static_cast<double>(r.objective);
+                unresolved_slave_lb = r.lower_bound_valid ? r.lower_bound : -1;
+                unresolved_master_zk = zK_master;
+            }
 
             if (r.optimal)
             {
@@ -2370,26 +2441,10 @@ namespace bbcp
         std::vector<std::vector<Node>> per_drone_customers(K);
 
         SlaveResult r;
+        int64_t active_slave_cutoff = -1;
 
-        if (static_cast<int>(drone_customers.size()) < K)
-        {
-            // User-requested guard for the K-route slave: if fewer than K drone
-            // customers are selected, do not build the slave. Return a zero
-            // drone makespan. In the intended benchmark setting, |S| >= K.
-            r.feasible = true;
-            r.optimal = true;
-            r.objective = 0;
-            r.lower_bound = 0;
-            r.lower_bound_valid = true;
-
-            if (options_.verbose)
-            {
-                std::cout << "  [SLAVE-SKIP] |S| < K; return drone objective 0"
-                          << ", |S|=" << drone_customers.size()
-                          << ", K=" << K << "\n";
-            }
-        }
-        else
+        // Always solve the K-drone slave, including 0 < |D| < K.
+        // The slave uses min(K,|D|) nonempty chains; idle drones are allowed.
         {
             SlaveOptions slave_opts = options_.slave_options;
 
@@ -2397,7 +2452,7 @@ namespace bbcp
             if (std::isfinite(best_valid_ub_))
             {
                 slave_cutoff =
-                    static_cast<int64_t>(std::floor(best_valid_ub_ - 1.0 + 1e-9));
+                    static_cast<int64_t>(std::ceil(best_valid_ub_ - 1e-9) - 1);
 
                 if (slave_opts.makespan_cutoff >= 0)
                 {
@@ -2410,6 +2465,7 @@ namespace bbcp
                 }
             }
 
+            active_slave_cutoff = slave_opts.makespan_cutoff;
             PrintSlaveCall(-1, drone_customers, slave_opts.makespan_cutoff);
             r = slave_.Solve(drone_customers, slave_opts);
             PrintSlaveResult(-1, drone_customers, slave_opts.makespan_cutoff, r);
@@ -2417,23 +2473,40 @@ namespace bbcp
 
         if (!r.feasible)
         {
-            if (r.proven_infeasible)
-            {
-                AddGlobalDroneNoGoodCut(drone_customers);
+            if (r.proven_infeasible && active_slave_cutoff < 0) {
+                std::cerr << "[ERROR] Slave globally infeasible; no model-safe "
+                             "cut generated.\n";
+                abort();
+                return;
             }
-            else if (r.lower_bound_valid)
-            {
-                AddGlobalDroneSubsetLowerBoundCut(drone_customers, static_cast<double>(r.lower_bound));
-            }
-            else
-            {
-                std::cerr << "\n[ERROR] slave-assign slave returned UNKNOWN without a valid bound.\n"
-                          << "        Increase slave_time or use an exact slave.\n";
+            const double certified_lb = r.proven_infeasible &&
+                    active_slave_cutoff >= 0
+                ? static_cast<double>(active_slave_cutoff + 1)
+                : (r.lower_bound_valid ? static_cast<double>(r.lower_bound) : -1.0);
+            if (certified_lb > zD_master + 1e-6) {
+                AddGlobalDroneSubsetLowerBoundCut(drone_customers, certified_lb);
+            } else {
+                std::cerr << "[ERROR] Unresolved K-drone subproblem: "
+                             "no violated certified cut, cannot accept master "
+                             "incumbent.\n";
                 abort();
             }
             return;
         }
 
+        if (!r.optimal && static_cast<double>(r.objective) > zD_master + 1e-6 &&
+            (!r.lower_bound_valid ||
+             static_cast<double>(r.lower_bound) <= zD_master + 1e-6)) {
+            std::cerr << "[ERROR] Feasible but unresolved K-drone proof; "
+                         "increase --slave-time.\n";
+            abort();
+            return;
+        }
+        if (!ValidateDecodedSlaveSchedule(inst_, drone_customers, r, K)) {
+            std::cerr << "[ERROR] Invalid K-drone slave schedule.\n";
+            abort();
+            return;
+        }
         schedule.makespan = static_cast<double>(r.objective);
 
         const int chains_to_copy = std::min<int>(K, static_cast<int>(r.chains.size()));

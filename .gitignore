@@ -28,5 +28,6 @@ milp_cp_solver
 *~
 *.swp
 *.swo
+*.backup
 .vscode/
 .idea/

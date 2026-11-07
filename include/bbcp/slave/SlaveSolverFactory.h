@@ -9,6 +9,6 @@
 namespace bbcp {
 
 std::unique_ptr<ISlaveSolver>
-CreateSlaveSolver(const Instance& inst, SlaveSolverType type);
+CreateSlaveSolver(const Instance& inst, SlaveSolverType type, MasterAssignmentMode assignment_mode);
 
 }  // namespace bbcp
