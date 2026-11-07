@@ -105,9 +105,16 @@ find_library(GUROBI_MAIN_LIB
 message(STATUS "GUROBI_CXX_LIB=${GUROBI_CXX_LIB}")
 message(STATUS "GUROBI_MAIN_LIB=${GUROBI_MAIN_LIB}")
 
+# ---------------------------------------------------------------------
+# SQLite3
+# ---------------------------------------------------------------------
+find_package(SQLite3 REQUIRED)
+message(STATUS "Found SQLite3: ${SQLite3_VERSION}")
+
 target_link_libraries(truck_drone_solver PRIVATE
     ${GUROBI_CXX_LIB}
     ${GUROBI_MAIN_LIB}
+    SQLite::SQLite3
 )
 
 # ---------------------------------------------------------------------

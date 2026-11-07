@@ -60,6 +60,7 @@ namespace bbcp
     {
         std::string instance_name;
         std::string result_file = "results/csv/result.csv";
+        std::string sqlite_db_path = "results/results.db";
 
         double time_limit_seconds = 3600.0;
         double mip_gap = 0.0;

@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <sqlite3.h>
 
 namespace bbcp {
 
@@ -297,6 +298,204 @@ void ResultWriter::WriteCSV(
         << solution.stats.mip_gap << ","
         << solution.stats.valid_incumbent_updates
         << "\n";
+}
+
+void ResultWriter::WriteSQLite(
+    const std::string& db_path,
+    const Instance& inst,
+    const MasterOptions& options,
+    const FullSolution& solution
+) {
+    if (db_path.empty()) return;
+
+    EnsureParent(db_path);
+
+    sqlite3* db = nullptr;
+    const int rc = sqlite3_open_v2(
+        db_path.c_str(),
+        &db,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+        nullptr
+    );
+
+    if (rc != SQLITE_OK) {
+        std::cerr << "[ERROR] Cannot open SQLite database: " << db_path
+                  << " (" << sqlite3_errmsg(db) << ")\n";
+        if (db) sqlite3_close(db);
+        return;
+    }
+
+    sqlite3_busy_timeout(db, 5000);
+
+    const char* schema_sql =
+        "CREATE TABLE IF NOT EXISTS experiments (\n"
+        "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+        "    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n"
+        "    instance TEXT NOT NULL,\n"
+        "    n_customers INTEGER,\n"
+        "    n_drones INTEGER,\n"
+        "    swap_time_min REAL,\n"
+        "    battery_capacity REAL,\n"
+        "    drone_cap REAL,\n"
+        "    truck_speed REAL,\n"
+        "    drone_speed REAL,\n"
+        "    assignment_mode TEXT,\n"
+        "    slave TEXT,\n"
+        "    truck_mode TEXT,\n"
+        "    branching TEXT,\n"
+        "    feasible INTEGER,\n"
+        "    best_upper_bound REAL,\n"
+        "    best_lower_bound REAL,\n"
+        "    final_gap REAL,\n"
+        "    final_gap_percent REAL,\n"
+        "    truck_value REAL,\n"
+        "    drone_value REAL,\n"
+        "    final_makespan REAL,\n"
+        "    initial_solution REAL,\n"
+        "    time_to_best_solution_sec REAL,\n"
+        "    runtime_sec REAL,\n"
+        "    num_truck_customers INTEGER,\n"
+        "    num_drone_customers INTEGER,\n"
+        "    truck_customers TEXT,\n"
+        "    drone_customers TEXT,\n"
+        "    truck_route TEXT,\n"
+        "    drone_routes TEXT,\n"
+        "    gurobi_status INTEGER,\n"
+        "    gurobi_master_obj REAL,\n"
+        "    gurobi_final_master_lb REAL,\n"
+        "    best_tracked_master_lb REAL,\n"
+        "    gurobi_master_gap REAL,\n"
+        "    valid_incumbent_updates INTEGER,\n"
+        "    mipnode_cuts INTEGER,\n"
+        "    local_search INTEGER\n"
+        ");\n"
+        "CREATE INDEX IF NOT EXISTS idx_experiments_instance ON experiments(instance);\n"
+        "CREATE INDEX IF NOT EXISTS idx_experiments_feasible ON experiments(feasible);\n"
+        "CREATE INDEX IF NOT EXISTS idx_experiments_slave ON experiments(slave);\n"
+        "CREATE INDEX IF NOT EXISTS idx_experiments_assignment ON experiments(assignment_mode);\n"
+        "CREATE VIEW IF NOT EXISTS v_summary AS\n"
+        "SELECT \n"
+        "    id,\n"
+        "    timestamp,\n"
+        "    instance,\n"
+        "    n_customers,\n"
+        "    n_drones,\n"
+        "    assignment_mode,\n"
+        "    slave,\n"
+        "    feasible,\n"
+        "    best_upper_bound AS UB,\n"
+        "    best_lower_bound AS LB,\n"
+        "    final_gap_percent AS gap_pct,\n"
+        "    runtime_sec,\n"
+        "    gurobi_status\n"
+        "FROM experiments;\n";
+
+    char* err_msg = nullptr;
+    if (sqlite3_exec(db, schema_sql, nullptr, nullptr, &err_msg) != SQLITE_OK) {
+        std::cerr << "[ERROR] SQLite schema initialization error: "
+                  << (err_msg ? err_msg : "unknown") << "\n";
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        return;
+    }
+
+    const char* insert_sql =
+        "INSERT INTO experiments (\n"
+        "    instance, n_customers, n_drones, swap_time_min, battery_capacity, drone_cap,\n"
+        "    truck_speed, drone_speed, assignment_mode, slave, truck_mode, branching,\n"
+        "    feasible, best_upper_bound, best_lower_bound, final_gap, final_gap_percent,\n"
+        "    truck_value, drone_value, final_makespan, initial_solution,\n"
+        "    time_to_best_solution_sec, runtime_sec, num_truck_customers, num_drone_customers,\n"
+        "    truck_customers, drone_customers, truck_route, drone_routes,\n"
+        "    gurobi_status, gurobi_master_obj, gurobi_final_master_lb, best_tracked_master_lb,\n"
+        "    gurobi_master_gap, valid_incumbent_updates, mipnode_cuts, local_search\n"
+        ") VALUES (\n"
+        "    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,\n"
+        "    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,\n"
+        "    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?\n"
+        ");";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, insert_sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "[ERROR] Cannot prepare SQLite insert: "
+                  << sqlite3_errmsg(db) << "\n";
+        sqlite3_close(db);
+        return;
+    }
+
+    const double best_upper_bound = solution.stats.best_valid_ub;
+    const double best_lower_bound = BestAvailableLowerBound(solution);
+    const double final_gap = SafeGap(best_upper_bound, best_lower_bound);
+    const double final_gap_percent = SafeGapPercent(best_upper_bound, best_lower_bound);
+    const double final_makespan = std::max(solution.truck_value, solution.drone_value);
+
+    auto bind_double_safe = [](sqlite3_stmt* s, int idx, double val) {
+        if (!std::isfinite(val)) {
+            sqlite3_bind_null(s, idx);
+        } else {
+            sqlite3_bind_double(s, idx, val);
+        }
+    };
+
+    const std::string instance_name = inst.name;
+    const std::string assignment_str = MasterAssignmentModeName(options.assignment_mode);
+    const std::string slave_str = SlaveSolverTypeName(options.slave_solver);
+    const std::string truck_mode_str = MasterSubtourModeName(options.subtour_mode);
+    const std::string branching_str = BranchingStrategyName(options.branching_strategy);
+    const std::string truck_cust_str = JoinNodeList(solution.truck_customers);
+    const std::string drone_cust_str = JoinNodeList(solution.drone_customers);
+    const std::string truck_route_str = JoinRoute(solution.truck_route);
+    const std::string drone_routes_str = DroneScheduleString(solution);
+
+    int p = 1;
+    sqlite3_bind_text(stmt, p++, instance_name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, p++, inst.n);
+    sqlite3_bind_int(stmt, p++, inst.n_drones);
+    bind_double_safe(stmt, p++, static_cast<double>(inst.swap_time) / 60.0);
+    bind_double_safe(stmt, p++, inst.battery_capacity);
+    bind_double_safe(stmt, p++, inst.drone_cap);
+    bind_double_safe(stmt, p++, inst.truck_speed);
+    bind_double_safe(stmt, p++, inst.drone_speed);
+    sqlite3_bind_text(stmt, p++, assignment_str.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, p++, slave_str.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, p++, truck_mode_str.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, p++, branching_str.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, p++, solution.feasible ? 1 : 0);
+    bind_double_safe(stmt, p++, best_upper_bound);
+    bind_double_safe(stmt, p++, best_lower_bound);
+    bind_double_safe(stmt, p++, final_gap);
+    bind_double_safe(stmt, p++, final_gap_percent);
+    bind_double_safe(stmt, p++, solution.truck_value);
+    bind_double_safe(stmt, p++, solution.drone_value);
+    bind_double_safe(stmt, p++, final_makespan);
+    bind_double_safe(stmt, p++, solution.stats.initial_valid_ub);
+    bind_double_safe(stmt, p++, solution.stats.time_to_best_solution_sec);
+    bind_double_safe(stmt, p++, solution.stats.runtime_sec);
+    sqlite3_bind_int(stmt, p++, static_cast<int>(solution.truck_customers.size()));
+    sqlite3_bind_int(stmt, p++, static_cast<int>(solution.drone_customers.size()));
+    sqlite3_bind_text(stmt, p++, truck_cust_str.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, p++, drone_cust_str.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, p++, truck_route_str.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, p++, drone_routes_str.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, p++, solution.stats.gurobi_status);
+    bind_double_safe(stmt, p++, solution.stats.master_obj);
+    bind_double_safe(stmt, p++, solution.stats.lower_bound);
+    bind_double_safe(stmt, p++, solution.stats.best_master_lb_seen);
+    bind_double_safe(stmt, p++, solution.stats.mip_gap);
+    sqlite3_bind_int(stmt, p++, solution.stats.valid_incumbent_updates);
+    sqlite3_bind_int(stmt, p++, options.enable_mipnode_cuts ? 1 : 0);
+    sqlite3_bind_int(stmt, p++, options.local_search_options.enabled ? 1 : 0);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        std::cerr << "[ERROR] Failed to insert row into SQLite: "
+                  << sqlite3_errmsg(db) << "\n";
+    } else if (options.verbose) {
+        std::cout << "[SQLITE] Output stored in: " << db_path
+                  << " (rowid=" << sqlite3_last_insert_rowid(db) << ")\n";
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
 }
 
 void ResultWriter::WriteSolutionText(

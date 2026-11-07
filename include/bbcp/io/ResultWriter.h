@@ -18,6 +18,12 @@ namespace bbcp
             const MasterOptions &options,
             const FullSolution &solution);
 
+        static void WriteSQLite(
+            const std::string &db_path,
+            const Instance &inst,
+            const MasterOptions &options,
+            const FullSolution &solution);
+
         static void WriteSolutionText(
             const std::string &path,
             const FullSolution &solution);

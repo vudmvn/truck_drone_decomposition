@@ -139,6 +139,9 @@ namespace bbcp
             }
             ResultWriter::WriteCSV(options_.result_file, inst_, options_, best);
             ResultWriter::WriteSolutionText("results/solutions/solution.txt", inst_, best);
+            if (!options_.sqlite_db_path.empty()) {
+                ResultWriter::WriteSQLite(options_.sqlite_db_path, inst_, options_, best);
+            }
 
             return best;
         }

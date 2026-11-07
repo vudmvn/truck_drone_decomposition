@@ -58,6 +58,8 @@ void PrintHelp(const char* exe) {
         "  --time-limit SECONDS                  Master limit, default 3600\n"
         "  --slave-time SECONDS                  Per-slave limit, default 5\n"
         "  --result PATH                         CSV output\n"
+        "  --db PATH                             SQLite database output, default: results/results.db\n"
+        "  --sqlite PATH                         Alias for --db\n"
         "  --verbose on|off                      Gurobi and callback log\n"
         "  --cut-verbose on|off                  Cut diagnostics\n"
         "  --list-variants                        Print supported combinations\n"
@@ -140,6 +142,7 @@ int main(int argc, char** argv) {
             else if (name=="--time-limit") options.time_limit_seconds=std::stod(val);
             else if (name=="--slave-time") options.slave_options.time_limit_seconds=std::stod(val);
             else if (name=="--result") options.result_file=val;
+            else if (name=="--db" || name=="--sqlite") options.sqlite_db_path=val;
             else if (name=="--verbose") options.verbose=ParseBool(val);
             else if (name=="--cut-verbose") options.cut_verbose=ParseBool(val);
             else throw std::invalid_argument("Unknown option: " + name);
