@@ -179,6 +179,7 @@ int main(int argc, char** argv) {
         Instance inst=ReadInstanceFromFile(filepath,read_options);
         if(inst.n_drones<=0) throw std::invalid_argument("Instance must have K>=1");
         if (solver_model == "cp-2index" || solver_model == "cp-anonymous" || solver_model == "monolithic-cp" || solver_model == "cp") {
+            options.assignment_mode = MasterAssignmentMode::CP2Index;
             AnonymousCPOptions cp_opts;
             cp_opts.time_limit_seconds = options.time_limit_seconds;
             cp_opts.num_search_workers = 8;

@@ -23,7 +23,8 @@ namespace bbcp
     enum class MasterAssignmentMode
     {
         Explicit,
-        SlaveAssign
+        SlaveAssign,
+        CP2Index
     };
 
     enum class BranchingStrategy

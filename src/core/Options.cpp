@@ -95,6 +95,11 @@ namespace bbcp
             return MasterAssignmentMode::SlaveAssign;
         }
 
+        if (s == "cp-2index" || s == "cp_2index" || s == "cp" || s == "anonymous")
+        {
+            return MasterAssignmentMode::CP2Index;
+        }
+
         throw std::runtime_error("Unknown master assignment mode: " + raw);
     }
 
@@ -106,6 +111,8 @@ namespace bbcp
             return "explicit";
         case MasterAssignmentMode::SlaveAssign:
             return "slave-assign";
+        case MasterAssignmentMode::CP2Index:
+            return "cp-2index";
         }
         return "unknown";
     }
