@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Batch experiment runner for 2-Index Anonymous CP-SAT Solver with Lipschitz Bounds.
 
-Runs instances of sizes n=30, n=50, and n=100 with configuration:
+Runs instances of sizes n=30, n=50, and n=100 in parallel (default: 2 jobs).
+Configuration:
 - Model: Monolithic 2-Index Anonymous CP-SAT (OR-Tools)
-- Enhancements: Lipschitz workload bounds, energy cover, symmetry breaking, pair cuts
+- Enhancements: Lipschitz workload cuts, energy cover, symmetry breaking, pair cuts
 - Time Limit: up to 3600 seconds per instance
-- Workers: 8 search workers
 - Storage: CSV & SQLite database (results/results.db)
 """
 
 import argparse
+import concurrent.futures
 import datetime
 import json
 import os
@@ -17,9 +18,10 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set
 
 DEFAULT_BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_DIR = DEFAULT_BASE_DIR / "data" / "instances"
@@ -28,18 +30,29 @@ DEFAULT_DB = DEFAULT_BASE_DIR / "results" / "results.db"
 DEFAULT_CSV = DEFAULT_BASE_DIR / "results" / "csv" / "result_cp_2index.csv"
 DEFAULT_LOG_DIR = DEFAULT_BASE_DIR / "results" / "logs" / "cp_2index"
 
-current_child_proc: Optional[subprocess.Popen] = None
+lock = threading.Lock()
+active_procs: Dict[str, subprocess.Popen] = {}
+is_shutting_down = False
 
 
 def sig_handler(signum, frame):
-    global current_child_proc
-    print(f"\n[INTERRUPT] Received signal {signum}. Terminating current solver process gracefully...", flush=True)
-    if current_child_proc and current_child_proc.poll() is None:
-        try:
-            current_child_proc.terminate()
-            current_child_proc.wait(timeout=5)
-        except Exception:
-            current_child_proc.kill()
+    global is_shutting_down
+    is_shutting_down = True
+    print(f"\n[INTERRUPT] Received signal {signum}. Terminating all active solver processes gracefully...", flush=True)
+    with lock:
+        for name, proc in list(active_procs.items()):
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+        time.sleep(0.5)
+        for name, proc in list(active_procs.items()):
+            if proc.poll() is None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
     sys.exit(128 + signum)
 
 
@@ -86,7 +99,7 @@ def collect_instances(data_dir: Path, sizes: List[int]) -> List[Tuple[int, Path]
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run batch experiments for 2-Index Anonymous CP-SAT solver with Lipschitz inequalities."
+        description="Run parallel batch experiments for 2-Index Anonymous CP-SAT solver with Lipschitz inequalities."
     )
     parser.add_argument("--bin", type=Path, default=DEFAULT_BIN, help=f"Solver binary (default: {DEFAULT_BIN})")
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR, help="Instances directory")
@@ -94,6 +107,7 @@ def main():
     parser.add_argument("--csv", type=Path, default=DEFAULT_CSV, help="CSV output path")
     parser.add_argument("--log-dir", type=Path, default=DEFAULT_LOG_DIR, help="Logs directory")
     parser.add_argument("--time-limit", type=int, default=3600, help="Time limit in seconds (default: 3600)")
+    parser.add_argument("-j", "--jobs", "--parallel", dest="jobs", type=int, default=2, help="Number of instances to solve in parallel (default: 2)")
     parser.add_argument("--sizes", default="30,50,100", help="Comma-separated instance sizes to run (default: 30,50,100)")
     parser.add_argument("--force", action="store_true", help="Force rerun even if instance already in DB")
     parser.add_argument("--dry-run", action="store_true", help="List instances without executing")
@@ -127,12 +141,13 @@ def main():
     skipped_count = total_count - len(run_list)
 
     print("=" * 80)
-    print("2-INDEX ANONYMOUS CP-SAT (OR-TOOLS) BATCH RUNNER")
+    print("PARALLEL 2-INDEX ANONYMOUS CP-SAT BATCH RUNNER")
     print(f"Timestamp        : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Solver binary    : {args.bin}")
     print(f"Model            : cp-2index (Monolithic CP-SAT)")
     print(f"Enhancements     : Lipschitz bounds, energy cover, symmetry breaking, pair cuts")
-    print(f"Time limit       : {args.time_limit}s")
+    print(f"Parallel jobs    : {args.jobs} concurrent instances")
+    print(f"Time limit       : {args.time_limit}s per instance")
     print(f"SQLite DB        : {args.db}")
     print(f"Result CSV       : {args.csv}")
     print(f"Logs dir         : {args.log_dir}")
@@ -148,29 +163,40 @@ def main():
 
     progress_file = args.log_dir / "progress.json"
 
-    def save_progress(current_idx: int, current_inst: str, status: str):
+    running_set: Set[str] = set()
+    success_count = 0
+    failure_count = 0
+    completed_in_run = 0
+
+    def update_progress_file():
         data = {
             "last_update": datetime.datetime.now().isoformat(),
             "total": total_count,
             "to_run": len(run_list),
             "completed_before": skipped_count,
-            "current_index": current_idx,
-            "current_instance": current_inst,
-            "status": status,
+            "completed_now": completed_in_run,
+            "success": success_count,
+            "failed": failure_count,
+            "parallel_jobs": args.jobs,
+            "currently_running": sorted(list(running_set)),
+            "status": "RUNNING" if running_set else "FINISHED",
         }
-        with open(progress_file, "w", encoding="utf-8") as pf:
-            json.dump(data, pf, indent=2)
+        try:
+            with open(progress_file, "w", encoding="utf-8") as pf:
+                json.dump(data, pf, indent=2)
+        except Exception:
+            pass
 
-    global current_child_proc
-    success_count = 0
-    failure_count = 0
-
-    for idx, (sz, inst_path) in enumerate(run_list, 1):
+    def run_one(item: Tuple[int, int, Path]) -> Tuple[str, int, float, str, str]:
+        nonlocal success_count, failure_count, completed_in_run
+        seq_num, sz, inst_path = item
         inst_name = inst_path.name
         log_file = args.log_dir / f"{inst_path.stem}.log"
 
-        print(f"\n>>> [{idx}/{len(run_list)}] [{datetime.datetime.now().strftime('%H:%M:%S')}] Starting {inst_name} (n={sz})...", flush=True)
-        save_progress(idx, inst_name, "RUNNING")
+        with lock:
+            running_set.add(inst_name)
+            update_progress_file()
+            print(f">>> [START {seq_num}/{len(run_list)}] [{datetime.datetime.now().strftime('%H:%M:%S')}] {inst_name} (n={sz}) [Active: {len(running_set)}]", flush=True)
 
         cmd = [
             str(args.bin),
@@ -182,27 +208,33 @@ def main():
         ]
 
         t_start = time.time()
-        with open(log_file, "w", encoding="utf-8") as lf:
-            lf.write(f"# Command: {' '.join(cmd)}\n")
-            lf.write(f"# Started: {datetime.datetime.now().isoformat()}\n\n")
-            lf.flush()
+        retcode = -1
+        try:
+            with open(log_file, "w", encoding="utf-8") as lf:
+                lf.write(f"# Command: {' '.join(cmd)}\n")
+                lf.write(f"# Started: {datetime.datetime.now().isoformat()}\n\n")
+                lf.flush()
 
-            try:
-                current_child_proc = subprocess.Popen(
+                proc = subprocess.Popen(
                     cmd,
                     stdout=lf,
                     stderr=subprocess.STDOUT,
                     text=True,
                 )
-                retcode = current_child_proc.wait()
-                current_child_proc = None
-            except Exception as e:
-                lf.write(f"\n[EXCEPTION] {e}\n")
-                retcode = -1
+                with lock:
+                    active_procs[inst_name] = proc
+
+                retcode = proc.wait()
+
+                with lock:
+                    active_procs.pop(inst_name, None)
+        except Exception as e:
+            with lock:
+                active_procs.pop(inst_name, None)
+            retcode = -1
 
         elapsed = time.time() - t_start
 
-        # Parse log for result summary
         ub_val = "N/A"
         lb_val = "N/A"
         try:
@@ -216,17 +248,33 @@ def main():
         except Exception:
             pass
 
-        if retcode == 0:
-            success_count += 1
-            print(f"<<< [{idx}/{len(run_list)}] [{datetime.datetime.now().strftime('%H:%M:%S')}] Finished {inst_name} in {elapsed:.1f}s -> UB: {ub_val}, LB: {lb_val}", flush=True)
-            save_progress(idx, inst_name, "DONE")
-        else:
-            failure_count += 1
-            print(f"!!! [{idx}/{len(run_list)}] [{datetime.datetime.now().strftime('%H:%M:%S')}] FAILED {inst_name} (retcode={retcode}) in {elapsed:.1f}s -> Log: {log_file}", flush=True)
-            save_progress(idx, inst_name, f"ERROR (code {retcode})")
+        with lock:
+            running_set.discard(inst_name)
+            completed_in_run += 1
+            if retcode == 0:
+                success_count += 1
+                print(f"<<< [DONE  {seq_num}/{len(run_list)}] [{datetime.datetime.now().strftime('%H:%M:%S')}] {inst_name} in {elapsed:.1f}s -> UB: {ub_val}, LB: {lb_val}", flush=True)
+            else:
+                failure_count += 1
+                print(f"!!! [FAIL  {seq_num}/{len(run_list)}] [{datetime.datetime.now().strftime('%H:%M:%S')}] {inst_name} (retcode={retcode}) in {elapsed:.1f}s", flush=True)
+            update_progress_file()
+
+        return inst_name, retcode, elapsed, ub_val, lb_val
+
+    # Indexed list for clear sequence reporting
+    indexed_run_list = [(idx, sz, p) for idx, (sz, p) in enumerate(run_list, 1)]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        futures = [executor.submit(run_one, item) for item in indexed_run_list]
+        for f in concurrent.futures.as_completed(futures):
+            if is_shutting_down:
+                break
+
+    with lock:
+        update_progress_file()
 
     print("\n" + "=" * 80)
-    print("BATCH RUN COMPLETED")
+    print("PARALLEL BATCH RUN COMPLETED")
     print(f"Total processed: {len(run_list)}")
     print(f"Success        : {success_count}")
     print(f"Failed         : {failure_count}")
